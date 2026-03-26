@@ -13,6 +13,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <fcntl.h>
 #define SRTLA_SOCKET int
 #define SRTLA_INVALID_SOCKET (-1)
 #define closesocket close
