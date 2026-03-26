@@ -174,19 +174,32 @@ jobs:
             qt6-base-dev \
             cmake ninja-build pkg-config
 
-      - name: Clone OBS frontend headers
+      - name: Setup OBS frontend headers
+        id: frontend
         run: |
-          git clone --depth 1 --branch ${{ env.OBS_VERSION }} \
-            --filter=blob:none --sparse \
-            https://github.com/obsproject/obs-studio.git deps/obs-studio
-          cd deps/obs-studio
-          git sparse-checkout set frontend/api
+          # Use system header if available, otherwise clone matching version
+          if pkg-config --cflags obs-frontend-api 2>/dev/null; then
+            echo "Found obs-frontend-api via pkg-config"
+            echo "cmake_arg=" >> $GITHUB_OUTPUT
+          elif [ -f /usr/include/obs/obs-frontend-api.h ]; then
+            echo "Found obs-frontend-api.h in system includes"
+            echo "cmake_arg=" >> $GITHUB_OUTPUT
+          else
+            SYS_VER=$(pkg-config --modversion libobs | cut -d. -f1-3)
+            echo "Cloning OBS $SYS_VER frontend headers..."
+            git clone --depth 1 --branch "$SYS_VER" \
+              --filter=blob:none --sparse \
+              https://github.com/obsproject/obs-studio.git deps/obs-studio
+            cd deps/obs-studio
+            git sparse-checkout set frontend/api
+            echo "cmake_arg=-DOBS_FRONTEND_INCLUDE_DIR=deps/obs-studio/frontend/api" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build plugin
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DOBS_FRONTEND_INCLUDE_DIR="deps/obs-studio/frontend/api"
+            ${{ steps.frontend.outputs.cmake_arg }}
           cmake --build build
 
       - name: Package
