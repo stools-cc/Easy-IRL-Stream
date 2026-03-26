@@ -266,7 +266,10 @@ static void fmt_locale(char *out, size_t out_sz, const char *locale_key,
 		}
 	}
 	buf[j] = '\0';
-	snprintf(out, out_sz, "%s", buf);
+	if (j >= out_sz)
+		j = out_sz - 1;
+	memcpy(out, buf, j);
+	out[j] = '\0';
 }
 
 static bool protocol_changed_cb(obs_properties_t *props, obs_property_t *prop,
@@ -316,7 +319,7 @@ static bool protocol_changed_cb(obs_properties_t *props, obs_property_t *prop,
 	fmt_locale(line_mobile, sizeof(line_mobile), "ConnInfoMobile", NULL,
 		   NULL);
 
-	char info[1024];
+	char info[4096];
 	if (is_rtmp) {
 		const char *key =
 			obs_data_get_string(settings, "stream_key");

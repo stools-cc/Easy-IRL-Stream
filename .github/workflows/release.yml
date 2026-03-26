@@ -21,7 +21,7 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -84,25 +84,37 @@ jobs:
       - name: Generate import libraries
         shell: powershell
         run: |
-          $obsRoot = (Get-ChildItem deps/obs-bin -Directory | Select-Object -First 1).FullName
-          $binDir = "$obsRoot\bin\64bit"
           $outDir = "deps/obs-libs"
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
+          Write-Host "=== OBS binary directory structure ==="
+          Get-ChildItem deps/obs-bin -Recurse -Directory | ForEach-Object { Write-Host $_.FullName }
+
           foreach ($name in @("obs", "obs-frontend-api", "w32-pthreads")) {
-              $raw = (& dumpbin /exports "$binDir\$name.dll" 2>&1) | Out-String
+              $dll = Get-ChildItem -Path "deps/obs-bin" -Filter "$name.dll" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+              if (-not $dll) { throw "Could not find $name.dll in deps/obs-bin" }
+              Write-Host "Found: $($dll.FullName)"
+
+              $raw = (& dumpbin /exports $dll.FullName 2>&1) | Out-String
               $lines = $raw -split "`r?`n"
               $defLines = @("LIBRARY `"$name`"", "EXPORTS")
               $capture = $false
               foreach ($line in $lines) {
                   if ($line -match "ordinal\s+hint\s+RVA\s+name") { $capture = $true; continue }
-                  if ($capture -and $line -match "Summary") { break }
+                  if ($capture -and $line -match "^\s*Summary") { break }
                   if ($capture -and $line -match "^\s+(\d+)\s+[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s+(\S+)") {
                       $defLines += "    $($Matches[2])"
                   }
               }
+              $exportCount = $defLines.Count - 2
+              Write-Host "  $name : $exportCount exports"
+              if ($exportCount -lt 1) { throw "No exports found in $name.dll — dumpbin output may have changed" }
+
               $defLines -join "`n" | Out-File -Encoding ASCII "$outDir\$name.def" -NoNewline
-              & lib /nologo /def:"$outDir\$name.def" /out:"$outDir\$name.lib" /machine:x64 2>$null | Out-Null
+              & lib /nologo /def:"$outDir\$name.def" /out:"$outDir\$name.lib" /machine:x64
+              if (-not (Test-Path "$outDir\$name.lib")) { throw "Failed to create $name.lib" }
+              $sz = [math]::Round((Get-Item "$outDir\$name.lib").Length / 1KB, 1)
+              Write-Host "  $name.lib : $sz KB"
           }
 
       - name: Build plugin
@@ -140,7 +152,7 @@ jobs:
             /DMyAppVersion=$ver installer/installer.iss
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows-release
           path: release/*
@@ -151,7 +163,7 @@ jobs:
   build-linux:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Determine version
         id: version
@@ -214,7 +226,7 @@ jobs:
           tar czf ../release/easy-irl-stream-$ver-linux-x86_64.tar.gz *
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: linux-release
           path: release/*
@@ -228,7 +240,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Determine version
         id: version
@@ -243,7 +255,7 @@ jobs:
           fi
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
 

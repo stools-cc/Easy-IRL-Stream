@@ -192,7 +192,7 @@ static void *cmd_thread_func(void *arg)
 	struct cmd_args *ca = arg;
 	blog(LOG_INFO, "[%s] Executing command: %s", "Easy IRL Stream",
 	     ca->command);
-	system(ca->command);
+	(void)system(ca->command);
 	bfree(ca->command);
 	bfree(ca);
 	return NULL;
