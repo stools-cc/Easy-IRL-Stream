@@ -4,7 +4,7 @@
 
 #define MyAppName "Easy IRL Stream"
 #define MyAppPublisher "Easy IRL Stream"
-#define MyAppURL "https://github.com/example/easy-irl-stream"
+#define MyAppURL "https://github.com/nils-kt/Easy-IRL-Stream"
 
 [Setup]
 AppId={{B5E8A3D1-C7F2-4A96-9E5D-1F3B8A6C0D4E}
