@@ -100,7 +100,7 @@ Your phone needs to reach your PC over the internet. This requires **port forwar
 - Server URL: `rtmp://<YOUR_IP>:1935/live`
 - Stream Key: The configured key (default: `stream`)
 
-#### SRT (e.g. Larix Broadcaster, IRL Pro, Moblin)
+#### SRT (e.g. Larix Broadcaster, IRL Pro)
 
 - URL: `srt://<YOUR_IP>:9000`
 - Mode: Caller
