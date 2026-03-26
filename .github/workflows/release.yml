@@ -86,35 +86,31 @@ jobs:
         run: |
           $outDir = "deps/obs-libs"
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-
           Write-Host "=== OBS binary directory structure ==="
           Get-ChildItem deps/obs-bin -Recurse -Directory | ForEach-Object { Write-Host $_.FullName }
-
-          foreach ($name in @("obs", "obs-frontend-api", "w32-pthreads")) {
-              $dll = Get-ChildItem -Path "deps/obs-bin" -Filter "$name.dll" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-              if (-not $dll) { throw "Could not find $name.dll in deps/obs-bin" }
+          foreach ($dllName in @("obs", "obs-frontend-api", "w32-pthreads")) {
+              $dll = Get-ChildItem -Path "deps/obs-bin" -Filter "$dllName.dll" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+              if (-not $dll) { throw "Could not find $dllName.dll in deps/obs-bin" }
               Write-Host "Found: $($dll.FullName)"
-
               $raw = (& dumpbin /exports $dll.FullName 2>&1) | Out-String
               $lines = $raw -split "`r?`n"
-              $defLines = @("LIBRARY `"$name`"", "EXPORTS")
+              $defLines = @("LIBRARY ""$dllName""", "EXPORTS")
               $capture = $false
               foreach ($line in $lines) {
                   if ($line -match "ordinal\s+hint\s+RVA\s+name") { $capture = $true; continue }
                   if ($capture -and $line -match "^\s*Summary") { break }
                   if ($capture -and $line -match "^\s+(\d+)\s+[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s+(\S+)") {
-                      $defLines += "    $($Matches[2])"
+                      $defLines += ("    " + $Matches[2])
                   }
               }
               $exportCount = $defLines.Count - 2
-              Write-Host "  $name : $exportCount exports"
-              if ($exportCount -lt 1) { throw "No exports found in $name.dll — dumpbin output may have changed" }
-
-              $defLines -join "`n" | Out-File -Encoding ASCII "$outDir\$name.def" -NoNewline
-              & lib /nologo /def:"$outDir\$name.def" /out:"$outDir\$name.lib" /machine:x64
-              if (-not (Test-Path "$outDir\$name.lib")) { throw "Failed to create $name.lib" }
-              $sz = [math]::Round((Get-Item "$outDir\$name.lib").Length / 1KB, 1)
-              Write-Host "  $name.lib : $sz KB"
+              Write-Host "  $dllName exports: $exportCount"
+              if ($exportCount -lt 1) { throw "No exports found in $dllName.dll - dumpbin parsing failed" }
+              $defLines -join "`n" | Out-File -Encoding ASCII "$outDir/$dllName.def" -NoNewline
+              & lib /nologo /def:"$outDir/$dllName.def" /out:"$outDir/$dllName.lib" /machine:x64
+              if (-not (Test-Path "$outDir/$dllName.lib")) { throw "Failed to create $dllName.lib" }
+              $libSize = [math]::Round((Get-Item "$outDir/$dllName.lib").Length / 1KB, 1)
+              Write-Host "  $dllName.lib size: $libSize KB"
           }
 
       - name: Build plugin
