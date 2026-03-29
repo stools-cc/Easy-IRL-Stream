@@ -1,0 +1,12 @@
+build/
+deps/
+staging/
+release/
+cmake-build-*/
+.vs/
+.vscode/
+*.user
+CMakeUserPresets.json
+out/
+install-now.bat
+.cache/
