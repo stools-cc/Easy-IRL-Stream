@@ -107,23 +107,6 @@ if (Test-Path $dll) {
     Write-Host ""
     Write-Host "BUILD SUCCESSFUL: easy-irl-stream.dll ($size KB)" -ForegroundColor Green
     Write-Host "Output: $dll"
-    Write-Host ""
-
-    $install = Read-Host "Install to OBS? (y/n)"
-    if ($install -eq "y") {
-        $obsPluginDir = "C:\Program Files\obs-studio\obs-plugins\64bit"
-        $obsDataDir = "C:\Program Files\obs-studio\data\obs-plugins\easy-irl-stream\locale"
-        $curlDll = "$OBS_DEPS\bin\libcurl.dll"
-        $script = @"
-Copy-Item '$dll' '$obsPluginDir\easy-irl-stream.dll' -Force
-New-Item -ItemType Directory -Force -Path '$obsDataDir' | Out-Null
-Copy-Item '$ROOT\data\locale\en-US.ini' '$obsDataDir\en-US.ini' -Force
-Copy-Item '$ROOT\data\locale\de-DE.ini' '$obsDataDir\de-DE.ini' -Force
-if (Test-Path '$curlDll') { Copy-Item '$curlDll' '$obsPluginDir\libcurl.dll' -Force }
-"@
-        Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -Command $script" -Wait
-        Write-Host "Installed." -ForegroundColor Green
-    }
 } else {
     Write-Host "BUILD FAILED" -ForegroundColor Red
     exit 1

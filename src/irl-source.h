@@ -115,6 +115,10 @@ struct irl_source_data {
 	char *webhook_url;
 	char *custom_command;
 
+	/* Decoder debug counters (per-source) */
+	int dec_vid_pkt_count;
+	int dec_vid_frame_count;
+
 	/* Stats (written by ingest thread, read by UI) */
 	char stats_video_codec[32];
 	char stats_audio_codec[32];

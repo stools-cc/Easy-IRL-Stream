@@ -304,32 +304,30 @@ static void output_audio_frame(struct irl_source_data *data, AVFrame *frame)
 
 bool decoder_decode_packet(struct irl_source_data *data, AVPacket *pkt)
 {
-	static int vid_pkt_count = 0;
-	static int vid_frame_count = 0;
-
 	if (pkt->stream_index == data->video_stream_idx &&
 	    data->video_dec_ctx) {
 		int send_ret =
 			avcodec_send_packet(data->video_dec_ctx, pkt);
-		vid_pkt_count++;
+		data->dec_vid_pkt_count++;
 
 		if (send_ret < 0) {
-			if (vid_pkt_count <= 5)
+			if (data->dec_vid_pkt_count <= 5)
 				blog(LOG_WARNING,
 				     "[%s] avcodec_send_packet failed: %d (pkt #%d, size=%d)",
 				     PLUGIN_NAME, send_ret,
-				     vid_pkt_count, pkt->size);
+				     data->dec_vid_pkt_count, pkt->size);
 			return true;
 		}
 
 		AVFrame *frame = av_frame_alloc();
 		while (avcodec_receive_frame(data->video_dec_ctx, frame) == 0) {
-			vid_frame_count++;
-			if (vid_frame_count <= 3 ||
-			    (vid_frame_count % 300 == 0))
+			data->dec_vid_frame_count++;
+			if (data->dec_vid_frame_count <= 3 ||
+			    (data->dec_vid_frame_count % 300 == 0))
 				blog(LOG_DEBUG,
 				     "[%s] Video frame #%d decoded (fmt=%d %dx%d)",
-				     PLUGIN_NAME, vid_frame_count,
+				     PLUGIN_NAME,
+				     data->dec_vid_frame_count,
 				     frame->format,
 				     frame->width, frame->height);
 			output_video_frame(data, frame);
@@ -338,7 +336,8 @@ bool decoder_decode_packet(struct irl_source_data *data, AVPacket *pkt)
 		}
 		av_frame_free(&frame);
 
-		if (vid_pkt_count == 30 && vid_frame_count == 0)
+		if (data->dec_vid_pkt_count == 30 &&
+		    data->dec_vid_frame_count == 0)
 			blog(LOG_WARNING,
 			     "[%s] 30 video packets sent but 0 frames decoded",
 			     PLUGIN_NAME);

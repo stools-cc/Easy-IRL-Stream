@@ -1,5 +1,24 @@
 #include "event-handler.h"
 #include "webhook.h"
+#include <util/platform.h>
+
+static struct webhook_event_data snapshot_event_data(struct irl_source_data *data)
+{
+	struct webhook_event_data ed = {0};
+	ed.bitrate_kbps = data->current_bitrate_kbps;
+	ed.video_width = data->stats_video_width;
+	ed.video_height = data->stats_video_height;
+	ed.video_codec = data->stats_video_codec[0]
+				 ? data->stats_video_codec
+				 : NULL;
+
+	uint64_t conn_ns = data->stats_connect_time_ns;
+	if (conn_ns > 0) {
+		uint64_t now = os_gettime_ns();
+		ed.uptime_sec = (int64_t)((now - conn_ns) / 1000000000ULL);
+	}
+	return ed;
+}
 
 /* ---- queued tasks executed on the UI thread ---- */
 
@@ -118,8 +137,10 @@ static void fire_low_quality_actions(struct irl_source_data *data)
 	queue_scene_switch(scene);
 	queue_overlay(overlay, true);
 
-	if (webhook && webhook[0])
-		webhook_send_async(webhook, "low_quality", src_copy);
+	if (webhook && webhook[0]) {
+		struct webhook_event_data ed = snapshot_event_data(data);
+		webhook_send_async(webhook, "low_quality", src_copy, &ed);
+	}
 	if (cmd && cmd[0])
 		webhook_execute_command_async(cmd);
 
@@ -153,8 +174,10 @@ static void fire_quality_recovered_actions(struct irl_source_data *data)
 	queue_scene_switch(scene);
 	queue_overlay(overlay, false);
 
-	if (webhook && webhook[0])
-		webhook_send_async(webhook, "quality_recovered", src_copy);
+	if (webhook && webhook[0]) {
+		struct webhook_event_data ed = snapshot_event_data(data);
+		webhook_send_async(webhook, "quality_recovered", src_copy, &ed);
+	}
 
 	bfree(scene);
 	bfree(overlay);
@@ -193,8 +216,10 @@ static void fire_disconnect_actions(struct irl_source_data *data)
 	queue_overlay(overlay, true);
 	queue_recording(rec_action);
 
-	if (webhook && webhook[0])
-		webhook_send_async(webhook, "disconnect", src_copy);
+	if (webhook && webhook[0]) {
+		struct webhook_event_data ed = snapshot_event_data(data);
+		webhook_send_async(webhook, "disconnect", src_copy, &ed);
+	}
 	if (cmd && cmd[0])
 		webhook_execute_command_async(cmd);
 
@@ -229,8 +254,10 @@ static void fire_reconnect_actions(struct irl_source_data *data)
 	queue_scene_switch(scene);
 	queue_overlay(overlay, false);
 
-	if (webhook && webhook[0])
-		webhook_send_async(webhook, "reconnect", src_copy);
+	if (webhook && webhook[0]) {
+		struct webhook_event_data ed = snapshot_event_data(data);
+		webhook_send_async(webhook, "reconnect", src_copy, &ed);
+	}
 	if (cmd && cmd[0])
 		webhook_execute_command_async(cmd);
 

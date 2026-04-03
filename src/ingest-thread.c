@@ -47,6 +47,9 @@ static void build_url(struct irl_source_data *data, char *buf, size_t sz)
 			}
 		}
 
+		if (data->srt_streamid && data->srt_streamid[0])
+			dstr_catf(&url, "&streamid=%s", data->srt_streamid);
+
 		snprintf(buf, sz, "%s", url.array);
 		dstr_free(&url);
 	}
@@ -152,6 +155,8 @@ static void *ingest_thread_func(void *arg)
 		data->stats_connect_time_ns = os_gettime_ns();
 		data->stats_total_frames = 0;
 		data->stats_total_bytes = 0;
+		data->dec_vid_pkt_count = 0;
+		data->dec_vid_frame_count = 0;
 		event_handler_on_connect(data);
 
 		AVPacket *pkt = av_packet_alloc();

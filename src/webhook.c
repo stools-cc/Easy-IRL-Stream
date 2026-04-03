@@ -6,183 +6,116 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-
-#ifdef _WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-typedef SOCKET sock_t;
-#define SOCK_INVALID INVALID_SOCKET
-#define sock_close    closesocket
-#else
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <unistd.h>
-typedef int sock_t;
-#define SOCK_INVALID (-1)
-#define sock_close    close
-#endif
+#include <curl/curl.h>
 
 struct webhook_args {
 	char *url;
-	char *event_name;
-	char *source_name;
+	char *json_body;
 };
 
 struct cmd_args {
 	char *command;
 };
 
-static bool parse_url(const char *url, char *host, size_t host_sz,
-		      char *port, size_t port_sz, char *path, size_t path_sz)
+static size_t discard_response(void *ptr, size_t size, size_t nmemb,
+			       void *userdata)
 {
-	const char *p = url;
-
-	if (strncmp(p, "http://", 7) == 0) {
-		p += 7;
-		snprintf(port, port_sz, "80");
-	} else if (strncmp(p, "https://", 8) == 0) {
-		p += 8;
-		snprintf(port, port_sz, "443");
-	} else {
-		return false;
-	}
-
-	const char *slash = strchr(p, '/');
-	const char *colon = strchr(p, ':');
-
-	if (colon && (!slash || colon < slash)) {
-		size_t hlen = (size_t)(colon - p);
-		if (hlen >= host_sz)
-			hlen = host_sz - 1;
-		memcpy(host, p, hlen);
-		host[hlen] = '\0';
-
-		colon++;
-		const char *pend = slash ? slash : colon + strlen(colon);
-		size_t plen = (size_t)(pend - colon);
-		if (plen >= port_sz)
-			plen = port_sz - 1;
-		memcpy(port, colon, plen);
-		port[plen] = '\0';
-	} else {
-		size_t hlen = slash ? (size_t)(slash - p)
-				    : strlen(p);
-		if (hlen >= host_sz)
-			hlen = host_sz - 1;
-		memcpy(host, p, hlen);
-		host[hlen] = '\0';
-	}
-
-	if (slash)
-		snprintf(path, path_sz, "%s", slash);
-	else
-		snprintf(path, path_sz, "/");
-
-	return true;
+	(void)ptr;
+	(void)userdata;
+	return size * nmemb;
 }
 
-static void webhook_do_send(const char *url, const char *event_name,
-			    const char *source_name)
+static void webhook_do_send(const char *url, const char *json_body)
 {
-	char host[256] = {0};
-	char port_str[16] = {0};
-	char path[512] = {0};
-
-	if (!parse_url(url, host, sizeof(host), port_str, sizeof(port_str),
-		       path, sizeof(path))) {
-		blog(LOG_WARNING, "[%s] Webhook: invalid URL '%s'",
-		     "Easy IRL Stream", url);
+	CURL *curl = curl_easy_init();
+	if (!curl) {
+		blog(LOG_WARNING, "[%s] Webhook: curl_easy_init failed",
+		     "Easy IRL Stream");
 		return;
 	}
 
-#ifdef _WIN32
-	WSADATA wsa;
-	WSAStartup(MAKEWORD(2, 2), &wsa);
-#endif
+	struct curl_slist *headers = NULL;
+	headers = curl_slist_append(headers, "Content-Type: application/json");
 
-	struct addrinfo hints = {0};
-	struct addrinfo *res = NULL;
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
+	curl_easy_setopt(curl, CURLOPT_URL, url);
+	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_body);
+	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_response);
+	curl_easy_setopt(curl, CURLOPT_USERAGENT, "easy-irl-stream-webhook/1.0");
 
-	if (getaddrinfo(host, port_str, &hints, &res) != 0) {
-		blog(LOG_WARNING, "[%s] Webhook: DNS lookup failed for '%s'",
-		     "Easy IRL Stream", host);
-		return;
+	CURLcode res = curl_easy_perform(curl);
+	if (res != CURLE_OK) {
+		blog(LOG_WARNING, "[%s] Webhook failed (%s): %s",
+		     "Easy IRL Stream", url, curl_easy_strerror(res));
+	} else {
+		long http_code = 0;
+		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+		blog(LOG_DEBUG, "[%s] Webhook sent: %s (HTTP %ld)",
+		     "Easy IRL Stream", url, http_code);
 	}
 
-	sock_t sock = socket(res->ai_family, res->ai_socktype,
-			     res->ai_protocol);
-	if (sock == SOCK_INVALID) {
-		freeaddrinfo(res);
-		return;
-	}
-
-	if (connect(sock, res->ai_addr, (int)res->ai_addrlen) != 0) {
-		freeaddrinfo(res);
-		sock_close(sock);
-		return;
-	}
-	freeaddrinfo(res);
-
-	char body[1024];
-	snprintf(body, sizeof(body),
-		 "{\"event\":\"%s\",\"source\":\"%s\",\"timestamp\":%lld}",
-		 event_name, source_name, (long long)time(NULL));
-
-	char request[2048];
-	snprintf(request, sizeof(request),
-		 "POST %s HTTP/1.1\r\n"
-		 "Host: %s\r\n"
-		 "Content-Type: application/json\r\n"
-		 "Content-Length: %d\r\n"
-		 "Connection: close\r\n"
-		 "\r\n"
-		 "%s",
-		 path, host, (int)strlen(body), body);
-
-	send(sock, request, (int)strlen(request), 0);
-
-	char buf[512];
-	while (recv(sock, buf, sizeof(buf), 0) > 0) {
-	}
-
-	sock_close(sock);
-
-	blog(LOG_DEBUG, "[%s] Webhook sent: %s -> %s", "Easy IRL Stream",
-	     event_name, url);
+	curl_slist_free_all(headers);
+	curl_easy_cleanup(curl);
 }
 
 static void *webhook_thread_func(void *arg)
 {
 	struct webhook_args *wa = arg;
-	webhook_do_send(wa->url, wa->event_name, wa->source_name);
+	webhook_do_send(wa->url, wa->json_body);
 	bfree(wa->url);
-	bfree(wa->event_name);
-	bfree(wa->source_name);
+	bfree(wa->json_body);
 	bfree(wa);
 	return NULL;
 }
 
+static char *build_json_body(const char *event_name, const char *source_name,
+			     const struct webhook_event_data *extra)
+{
+	char buf[1024];
+
+	if (extra) {
+		snprintf(buf, sizeof(buf),
+			 "{\"event\":\"%s\",\"source\":\"%s\","
+			 "\"timestamp\":%lld,"
+			 "\"bitrate_kbps\":%lld,"
+			 "\"uptime_sec\":%lld,"
+			 "\"video_width\":%d,"
+			 "\"video_height\":%d,"
+			 "\"video_codec\":\"%s\"}",
+			 event_name, source_name, (long long)time(NULL),
+			 (long long)extra->bitrate_kbps,
+			 (long long)extra->uptime_sec,
+			 extra->video_width, extra->video_height,
+			 extra->video_codec ? extra->video_codec : "");
+	} else {
+		snprintf(buf, sizeof(buf),
+			 "{\"event\":\"%s\",\"source\":\"%s\","
+			 "\"timestamp\":%lld}",
+			 event_name, source_name, (long long)time(NULL));
+	}
+
+	return bstrdup(buf);
+}
+
 void webhook_send_async(const char *url, const char *event_name,
-			const char *source_name)
+			const char *source_name,
+			const struct webhook_event_data *extra)
 {
 	if (!url || !url[0])
 		return;
 
 	struct webhook_args *wa = bzalloc(sizeof(*wa));
 	wa->url = bstrdup(url);
-	wa->event_name = bstrdup(event_name);
-	wa->source_name = bstrdup(source_name);
+	wa->json_body = build_json_body(event_name, source_name, extra);
 
 	pthread_t thread;
 	if (pthread_create(&thread, NULL, webhook_thread_func, wa) == 0) {
 		pthread_detach(thread);
 	} else {
 		bfree(wa->url);
-		bfree(wa->event_name);
-		bfree(wa->source_name);
+		bfree(wa->json_body);
 		bfree(wa);
 	}
 }

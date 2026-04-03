@@ -82,7 +82,7 @@ private:
 	bool m_de;
 	QLabel *m_dot, *m_status;
 	QLabel *m_lbls[4], *m_vals[4];
-	QLabel *m_videoLine, *m_audioLine, *m_serverLine;
+	QLabel *m_videoLine, *m_audioLine, *m_serverLine, *m_ipLine;
 	QTimer *m_timer;
 	int64_t m_prevFrames = 0;
 	uint64_t m_prevTime = 0;
@@ -181,9 +181,11 @@ private:
 		m_videoLine = makeLabel("-", -1, false, "");
 		m_audioLine = makeLabel("-", -1, false, "");
 		m_serverLine = makeLabel("-", -1, false, dim);
+		m_ipLine = makeLabel("-", -1, false, dim);
 		root->addWidget(m_videoLine);
 		root->addWidget(m_audioLine);
 		root->addWidget(m_serverLine);
+		root->addWidget(m_ipLine);
 
 		root->addStretch();
 	}
@@ -288,6 +290,17 @@ private:
 			s += QString(" \u00b7 SRTLA \u2713 (:%1)")
 				     .arg(srtla_p);
 		m_serverLine->setText(s);
+
+		QString ip_text;
+		if (g_local_ip[0] && g_external_ip[0])
+			ip_text = QString("LAN: %1  \u00b7  WAN: %2")
+					  .arg(g_local_ip)
+					  .arg(g_external_ip);
+		else if (g_local_ip[0])
+			ip_text = QString("LAN: %1").arg(g_local_ip);
+		else
+			ip_text = "-";
+		m_ipLine->setText(ip_text);
 	}
 
 	void setNoSource()
@@ -301,6 +314,7 @@ private:
 		m_videoLine->setText("-");
 		m_audioLine->setText("-");
 		m_serverLine->setText("-");
+		m_ipLine->setText("-");
 		m_fps = 0;
 		m_prevFrames = 0;
 		m_prevTime = 0;
