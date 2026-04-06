@@ -45,6 +45,63 @@ static void maybe_show_ssl_error(CURLcode res, const char *errbuf)
 	}
 }
 
+/* ---- cURL debug callback ---- */
+
+static int curl_debug_cb(CURL *handle, curl_infotype type, char *data,
+			 size_t size, void *userptr)
+{
+	(void)handle;
+	(void)userptr;
+
+	const char *prefix;
+	switch (type) {
+	case CURLINFO_TEXT:
+		prefix = "* ";
+		break;
+	case CURLINFO_SSL_DATA_IN:
+	case CURLINFO_SSL_DATA_OUT:
+		return 0;
+	case CURLINFO_HEADER_IN:
+		prefix = "< ";
+		break;
+	case CURLINFO_HEADER_OUT:
+		prefix = "> ";
+		break;
+	case CURLINFO_DATA_IN:
+	case CURLINFO_DATA_OUT:
+		return 0;
+	default:
+		return 0;
+	}
+
+	char buf[1024];
+	size_t len = size < sizeof(buf) - 1 ? size : sizeof(buf) - 1;
+	memcpy(buf, data, len);
+	while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r'))
+		len--;
+	buf[len] = '\0';
+
+	blog(LOG_INFO, "[%s] curl: %s%s", PLUGIN_NAME, prefix, buf);
+	return 0;
+}
+
+static void curl_set_ssl_opts(CURL *curl)
+{
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+#ifdef _WIN32
+	curl_easy_setopt(curl, CURLOPT_SSLVERSION,
+			 CURL_SSLVERSION_TLSv1_2 | CURL_SSLVERSION_MAX_TLSv1_2);
+	curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NO_REVOKE);
+	curl_easy_setopt(curl, CURLOPT_HTTP_VERSION,
+			 (long)CURL_HTTP_VERSION_1_1);
+	curl_easy_setopt(curl, CURLOPT_SSL_ENABLE_ALPN, 0L);
+	curl_easy_setopt(curl, CURLOPT_IPRESOLVE, (long)CURL_IPRESOLVE_V4);
+#endif
+	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+	curl_easy_setopt(curl, CURLOPT_DEBUGFUNCTION, curl_debug_cb);
+}
+
 /* ---- cURL helpers ---- */
 
 struct mem_buf {
@@ -92,9 +149,7 @@ static char *api_get(const char *path, const char *token)
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, ua);
-	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-	curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+	curl_set_ssl_opts(curl);
 	curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
 
 	CURLcode res = curl_easy_perform(curl);
@@ -147,9 +202,7 @@ static bool api_post(const char *path, const char *token, const char *json_body)
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_body);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, ua);
-	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-	curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+	curl_set_ssl_opts(curl);
 	curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
 
 	CURLcode res = curl_easy_perform(curl);

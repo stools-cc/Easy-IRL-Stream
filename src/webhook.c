@@ -25,6 +25,43 @@ static size_t discard_response(void *ptr, size_t size, size_t nmemb,
 	return size * nmemb;
 }
 
+static int webhook_curl_debug_cb(CURL *handle, curl_infotype type, char *data,
+				size_t size, void *userptr)
+{
+	(void)handle;
+	(void)userptr;
+
+	const char *prefix;
+	switch (type) {
+	case CURLINFO_TEXT:
+		prefix = "* ";
+		break;
+	case CURLINFO_SSL_DATA_IN:
+	case CURLINFO_SSL_DATA_OUT:
+	case CURLINFO_DATA_IN:
+	case CURLINFO_DATA_OUT:
+		return 0;
+	case CURLINFO_HEADER_IN:
+		prefix = "< ";
+		break;
+	case CURLINFO_HEADER_OUT:
+		prefix = "> ";
+		break;
+	default:
+		return 0;
+	}
+
+	char buf[1024];
+	size_t len = size < sizeof(buf) - 1 ? size : sizeof(buf) - 1;
+	memcpy(buf, data, len);
+	while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r'))
+		len--;
+	buf[len] = '\0';
+
+	blog(LOG_INFO, "[Easy IRL Stream] curl: %s%s", prefix, buf);
+	return 0;
+}
+
 static void webhook_do_send(const char *url, const char *json_body)
 {
 	CURL *curl = curl_easy_init();
@@ -48,7 +85,17 @@ static void webhook_do_send(const char *url, const char *json_body)
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, "easy-irl-stream-webhook/1.0");
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-	curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+#ifdef _WIN32
+	curl_easy_setopt(curl, CURLOPT_SSLVERSION,
+			 CURL_SSLVERSION_TLSv1_2 | CURL_SSLVERSION_MAX_TLSv1_2);
+	curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NO_REVOKE);
+	curl_easy_setopt(curl, CURLOPT_HTTP_VERSION,
+			 (long)CURL_HTTP_VERSION_1_1);
+	curl_easy_setopt(curl, CURLOPT_SSL_ENABLE_ALPN, 0L);
+	curl_easy_setopt(curl, CURLOPT_IPRESOLVE, (long)CURL_IPRESOLVE_V4);
+#endif
+	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+	curl_easy_setopt(curl, CURLOPT_DEBUGFUNCTION, webhook_curl_debug_cb);
 	curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
 
 	CURLcode res = curl_easy_perform(curl);

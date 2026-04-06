@@ -299,6 +299,44 @@ struct update_ctx {
 #include "help-dialog.hpp"
 #include "stats-dialog.hpp"
 
+static int curl_debug_cb(CURL *handle, curl_infotype type, char *data,
+			 size_t size, void *userptr)
+{
+	(void)handle;
+	(void)userptr;
+
+	const char *prefix;
+	switch (type) {
+	case CURLINFO_TEXT:
+		prefix = "* ";
+		break;
+	case CURLINFO_SSL_DATA_IN:
+	case CURLINFO_SSL_DATA_OUT:
+		return 0;
+	case CURLINFO_HEADER_IN:
+		prefix = "< ";
+		break;
+	case CURLINFO_HEADER_OUT:
+		prefix = "> ";
+		break;
+	case CURLINFO_DATA_IN:
+	case CURLINFO_DATA_OUT:
+		return 0;
+	default:
+		return 0;
+	}
+
+	char buf[1024];
+	size_t len = size < sizeof(buf) - 1 ? size : sizeof(buf) - 1;
+	memcpy(buf, data, len);
+	while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r'))
+		len--;
+	buf[len] = '\0';
+
+	blog(LOG_INFO, "[%s] curl: %s%s", PLUGIN_NAME, prefix, buf);
+	return 0;
+}
+
 static bool check_update_blocking(void)
 {
 	char url[256];
@@ -323,7 +361,17 @@ static bool check_update_blocking(void)
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, ua);
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-	curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+#ifdef _WIN32
+	curl_easy_setopt(curl, CURLOPT_SSLVERSION,
+			 CURL_SSLVERSION_TLSv1_2 | CURL_SSLVERSION_MAX_TLSv1_2);
+	curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NO_REVOKE);
+	curl_easy_setopt(curl, CURLOPT_HTTP_VERSION,
+			 (long)CURL_HTTP_VERSION_1_1);
+	curl_easy_setopt(curl, CURLOPT_SSL_ENABLE_ALPN, 0L);
+	curl_easy_setopt(curl, CURLOPT_IPRESOLVE, (long)CURL_IPRESOLVE_V4);
+#endif
+	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+	curl_easy_setopt(curl, CURLOPT_DEBUGFUNCTION, curl_debug_cb);
 	curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
 
 	CURLcode res = curl_easy_perform(curl);
@@ -385,6 +433,15 @@ static void tools_stats_cb(void *private_data)
 bool obs_module_load(void)
 {
 	curl_global_init(CURL_GLOBAL_DEFAULT);
+
+	curl_version_info_data *vi = curl_version_info(CURLVERSION_NOW);
+	if (vi) {
+		blog(LOG_INFO,
+		     "[%s] curl %s, SSL: %s, features: 0x%x",
+		     PLUGIN_NAME, vi->version,
+		     vi->ssl_version ? vi->ssl_version : "none",
+		     (unsigned)vi->features);
+	}
 
 	if (check_update_blocking()) {
 		g_update_required = true;

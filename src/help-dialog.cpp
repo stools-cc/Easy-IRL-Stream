@@ -441,26 +441,58 @@ extern "C" void ssl_error_dialog_show(const char *detail, const char *locale)
 	QString title = is_de ? "Verbindungsfehler"
 			      : "Connection Error";
 
-	QString text = is_de
+	QString err = detail && detail[0] ? QString(detail) : QString("SSL connect error");
+	bool is_sec_e = err.contains("SEC_E_INVALID_TOKEN");
+
+	QString hint_de = is_sec_e
 		? QString::fromUtf8(
-			  "Easy IRL Stream konnte keine sichere Verbindung "
-			  "zu stools.cc herstellen.\n\n"
+			  "Dein Antivirus-Programm f\xc3\xa4""ngt HTTPS-Verbindungen ab "
+			  "und st\xc3\xb6""rt den TLS-Handshake.\n\n"
+			  "So behebst du das Problem:\n"
+			  "1. \xc3\x96""ffne dein Antivirus-Programm (z.B. Panda Dome, "
+			  "Kaspersky, Avast, ESET, Bitdefender)\n"
+			  "2. Gehe zu Einstellungen \xe2\x86\x92 Schutz / Webschutz\n"
+			  "3. Deaktiviere \"HTTPS-Scanning\" / \"SSL-Inspektion\" / "
+			  "\"Webschutz\" / \"Safe Browsing\"\n"
+			  "4. Oder f\xc3\xbc""ge stools.cc als Ausnahme hinzu\n"
+			  "5. Starte OBS neu")
+		: QString::fromUtf8(
 			  "M\xc3\xb6""gliche Ursachen:\n"
 			  "\xe2\x80\xa2 Antivirus-Software blockiert die Verbindung "
 			  "(HTTPS-Scanning / SSL-Inspektion deaktivieren)\n"
 			  "\xe2\x80\xa2 Firewall oder Proxy blockiert stools.cc\n"
-			  "\xe2\x80\xa2 VPN-Verbindung aktiv\n\n"
-			  "Fehler: %1")
-			  .arg(detail && detail[0] ? detail : "SSL connect error")
-		: QString("Easy IRL Stream could not establish a secure "
-			  "connection to stools.cc.\n\n"
+			  "\xe2\x80\xa2 VPN-Verbindung aktiv");
+
+	QString hint_en = is_sec_e
+		? QString(
+			  "Your antivirus software is intercepting HTTPS connections "
+			  "and breaking the TLS handshake.\n\n"
+			  "How to fix this:\n"
+			  "1. Open your antivirus program (e.g. Panda Dome, "
+			  "Kaspersky, Avast, ESET, Bitdefender)\n"
+			  "2. Go to Settings \xe2\x86\x92 Protection / Web Protection\n"
+			  "3. Disable \"HTTPS Scanning\" / \"SSL Inspection\" / "
+			  "\"Web Protection\" / \"Safe Browsing\"\n"
+			  "4. Or add stools.cc as an exception\n"
+			  "5. Restart OBS")
+		: QString(
 			  "Possible causes:\n"
 			  "\xe2\x80\xa2 Antivirus software blocking the connection "
 			  "(disable HTTPS scanning / SSL inspection)\n"
 			  "\xe2\x80\xa2 Firewall or proxy blocking stools.cc\n"
-			  "\xe2\x80\xa2 VPN connection active\n\n"
-			  "Error: %1")
-			  .arg(detail && detail[0] ? detail : "SSL connect error");
+			  "\xe2\x80\xa2 VPN connection active");
+
+	QString text = is_de
+		? QString::fromUtf8(
+			  "Easy IRL Stream konnte keine sichere Verbindung "
+			  "zu stools.cc herstellen.\n\n%1\n\n"
+			  "Fehler: %2")
+			  .arg(hint_de, err)
+		: QString(
+			  "Easy IRL Stream could not establish a secure "
+			  "connection to stools.cc.\n\n%1\n\n"
+			  "Error: %2")
+			  .arg(hint_en, err);
 
 	QMessageBox::warning(parent, title, text, QMessageBox::Ok);
 }

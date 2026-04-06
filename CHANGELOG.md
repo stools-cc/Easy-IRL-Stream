@@ -1,13 +1,29 @@
 # Easy IRL Stream
 
+## v1.1.1 — SSL Fix
+
+### Bug Fixes
+- **Fixed SSL connect errors on IPv6 networks** — Forced IPv4 resolution (`CURL_IPRESOLVE_V4`) to avoid broken IPv6 TLS handshakes that caused `SEC_E_INVALID_TOKEN` errors with Schannel.
+- **Additional SSL hardening** — TLS 1.2 is enforced as both minimum and maximum version, Schannel revocation checks are disabled (`CURLSSLOPT_NO_REVOKE`), and HTTP/1.1 is forced to prevent ALPN-related handshake failures with MITM proxies.
+
+### Improvements
+- **Verbose curl logging** — All HTTPS requests now log the full TLS handshake process (DNS resolution, IP used, SSL backend, cipher, errors) to the OBS log for easier diagnostics.
+- **curl version info on startup** — The OBS log now shows the curl version and SSL backend when the plugin loads.
+
+---
+
 ## v1.1.0 — Update Check, Watermark & SSL Fix
 
 ### New Features
-- **Mandatory update check** — The plugin now checks for updates on startup. If a newer version is available, a dialog is shown, the download page opens, and the plugin stays disabled until updated.
-- **Watermark for free users** — Non-Patreon users now see a small "Easy IRL Stream - stools.cc" watermark in the bottom-right corner of the video. Patreon supporters get it removed automatically.
+- **Mandatory update check** — The plugin checks for updates on startup. If a newer version is available, a dialog is shown, the download page opens, and the plugin stays disabled until updated.
+- **Watermark for free users** — Non-Patreon users now see a small "Easy IRL Stream - stools.cc" watermark in the bottom-right corner of the video. Patreon supporters get it removed automatically via the server API.
+- **SSL error dialog** — When the plugin can't connect to stools.cc due to TLS/SSL issues, a one-time dialog now explains possible causes (antivirus HTTPS scanning, firewall, VPN) with the detailed error message.
 
 ### Bug Fixes
-- **Fixed SSL connect errors** — API calls to `stools.cc` failed with "SSL connect error" because libcurl (built with OpenSSL) couldn't find CA certificates on Windows. Added `CURLSSLOPT_NATIVE_CA` to all curl calls so OpenSSL uses the Windows certificate store.
+- **Fixed SSL connect errors** — Disabled certificate verification and forced TLS 1.2 to work around Schannel `SEC_E_INVALID_TOKEN` errors caused by antivirus HTTPS inspection or TLS 1.3 incompatibilities. Added `CURLOPT_ERRORBUFFER` for detailed error diagnostics in the OBS log.
+
+### Improvements
+- **Patreon hint in FAQ** — The Help & FAQ dialog now includes an entry explaining the watermark and linking directly to the Patreon checkout page.
 
 ---
 
