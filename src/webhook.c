@@ -37,6 +37,8 @@ static void webhook_do_send(const char *url, const char *json_body)
 	struct curl_slist *headers = NULL;
 	headers = curl_slist_append(headers, "Content-Type: application/json");
 
+	char errbuf[CURL_ERROR_SIZE] = "";
+
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_body);
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
@@ -44,14 +46,16 @@ static void webhook_do_send(const char *url, const char *json_body)
 	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_response);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, "easy-irl-stream-webhook/1.0");
-#ifdef CURLSSLOPT_NATIVE_CA
-	curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NATIVE_CA);
-#endif
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+	curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+	curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
 
 	CURLcode res = curl_easy_perform(curl);
 	if (res != CURLE_OK) {
-		blog(LOG_WARNING, "[%s] Webhook failed (%s): %s",
-		     "Easy IRL Stream", url, curl_easy_strerror(res));
+		blog(LOG_WARNING, "[%s] Webhook failed (%s): %s (%s)",
+		     "Easy IRL Stream", url, curl_easy_strerror(res),
+		     errbuf[0] ? errbuf : "no details");
 	} else {
 		long http_code = 0;
 		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);

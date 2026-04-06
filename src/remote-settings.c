@@ -14,6 +14,37 @@
 
 #include <curl/curl.h>
 
+#include "help-dialog.hpp"
+
+/* ---- SSL error dialog (shown once per session) ---- */
+
+static volatile bool g_ssl_error_shown = false;
+
+struct ssl_error_ctx {
+	char detail[CURL_ERROR_SIZE];
+};
+
+static void task_show_ssl_error(void *param)
+{
+	struct ssl_error_ctx *ctx = param;
+	ssl_error_dialog_show(ctx->detail, obs_get_locale());
+	free(ctx);
+}
+
+static void maybe_show_ssl_error(CURLcode res, const char *errbuf)
+{
+	if (res != CURLE_SSL_CONNECT_ERROR || g_ssl_error_shown)
+		return;
+
+	g_ssl_error_shown = true;
+	struct ssl_error_ctx *ctx = malloc(sizeof(*ctx));
+	if (ctx) {
+		snprintf(ctx->detail, sizeof(ctx->detail), "%s",
+			 errbuf && errbuf[0] ? errbuf : "SSL connect error");
+		obs_queue_task(OBS_TASK_UI, task_show_ssl_error, ctx, false);
+	}
+}
+
 /* ---- cURL helpers ---- */
 
 struct mem_buf {
@@ -53,6 +84,7 @@ static char *api_get(const char *path, const char *token)
 	snprintf(ua, sizeof(ua), "%s%s", obf_ua_prefix(), PLUGIN_VERSION);
 
 	struct mem_buf buf = {NULL, 0};
+	char errbuf[CURL_ERROR_SIZE] = "";
 
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
@@ -60,9 +92,10 @@ static char *api_get(const char *path, const char *token)
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, ua);
-#ifdef CURLSSLOPT_NATIVE_CA
-	curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NATIVE_CA);
-#endif
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+	curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+	curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
 
 	CURLcode res = curl_easy_perform(curl);
 	long http_code = 0;
@@ -71,8 +104,10 @@ static char *api_get(const char *path, const char *token)
 	curl_easy_cleanup(curl);
 
 	if (res != CURLE_OK) {
-		blog(LOG_WARNING, "[%s] API GET %s failed: %s",
-		     PLUGIN_NAME, path, curl_easy_strerror(res));
+		blog(LOG_WARNING, "[%s] API GET %s failed: %s (%s)",
+		     PLUGIN_NAME, path, curl_easy_strerror(res),
+		     errbuf[0] ? errbuf : "no details");
+		maybe_show_ssl_error(res, errbuf);
 		free(buf.data);
 		return NULL;
 	}
@@ -105,14 +140,17 @@ static bool api_post(const char *path, const char *token, const char *json_body)
 	char ua[128];
 	snprintf(ua, sizeof(ua), "%s%s", obf_ua_prefix(), PLUGIN_VERSION);
 
+	char errbuf[CURL_ERROR_SIZE] = "";
+
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_body);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, ua);
-#ifdef CURLSSLOPT_NATIVE_CA
-	curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NATIVE_CA);
-#endif
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+	curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+	curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
 
 	CURLcode res = curl_easy_perform(curl);
 	long http_code = 0;
@@ -121,8 +159,10 @@ static bool api_post(const char *path, const char *token, const char *json_body)
 	curl_easy_cleanup(curl);
 
 	if (res != CURLE_OK) {
-		blog(LOG_WARNING, "[%s] API POST %s failed: %s",
-		     PLUGIN_NAME, path, curl_easy_strerror(res));
+		blog(LOG_WARNING, "[%s] API POST %s failed: %s (%s)",
+		     PLUGIN_NAME, path, curl_easy_strerror(res),
+		     errbuf[0] ? errbuf : "no details");
+		maybe_show_ssl_error(res, errbuf);
 		return false;
 	}
 	if (http_code != 200) {

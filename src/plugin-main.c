@@ -313,20 +313,29 @@ static bool check_update_blocking(void)
 	if (!curl) return false;
 
 	struct update_mem_buf buf = {NULL, 0};
+	char errbuf[CURL_ERROR_SIZE] = "";
+
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, update_write_cb);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
 	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, ua);
-#ifdef CURLSSLOPT_NATIVE_CA
-	curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NATIVE_CA);
-#endif
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+	curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+	curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
 
 	CURLcode res = curl_easy_perform(curl);
 	long http_code = 0;
 	curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
 	curl_easy_cleanup(curl);
+
+	if (res != CURLE_OK) {
+		blog(LOG_WARNING, "[%s] Update check failed: %s (%s)",
+		     PLUGIN_NAME, curl_easy_strerror(res),
+		     errbuf[0] ? errbuf : "no details");
+	}
 
 	if (res != CURLE_OK || http_code != 200 || !buf.data) {
 		free(buf.data);

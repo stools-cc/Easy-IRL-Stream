@@ -9,6 +9,7 @@ void help_dialog_show(const char *local_ip, const char *external_ip,
 
 void update_dialog_show(const char *new_version, const char *locale);
 void forced_update_show(const char *new_version, const char *locale);
+void ssl_error_dialog_show(const char *detail, const char *locale);
 
 #ifdef __cplusplus
 }

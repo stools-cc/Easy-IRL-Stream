@@ -431,3 +431,36 @@ extern "C" void forced_update_show(const char *new_version, const char *locale)
 		 obf_dash_downloads_path());
 	open_url(url);
 }
+
+extern "C" void ssl_error_dialog_show(const char *detail, const char *locale)
+{
+	bool is_de = locale && (strncmp(locale, "de", 2) == 0);
+
+	QWidget *parent = (QWidget *)obs_frontend_get_main_window();
+
+	QString title = is_de ? "Verbindungsfehler"
+			      : "Connection Error";
+
+	QString text = is_de
+		? QString::fromUtf8(
+			  "Easy IRL Stream konnte keine sichere Verbindung "
+			  "zu stools.cc herstellen.\n\n"
+			  "M\xc3\xb6""gliche Ursachen:\n"
+			  "\xe2\x80\xa2 Antivirus-Software blockiert die Verbindung "
+			  "(HTTPS-Scanning / SSL-Inspektion deaktivieren)\n"
+			  "\xe2\x80\xa2 Firewall oder Proxy blockiert stools.cc\n"
+			  "\xe2\x80\xa2 VPN-Verbindung aktiv\n\n"
+			  "Fehler: %1")
+			  .arg(detail && detail[0] ? detail : "SSL connect error")
+		: QString("Easy IRL Stream could not establish a secure "
+			  "connection to stools.cc.\n\n"
+			  "Possible causes:\n"
+			  "\xe2\x80\xa2 Antivirus software blocking the connection "
+			  "(disable HTTPS scanning / SSL inspection)\n"
+			  "\xe2\x80\xa2 Firewall or proxy blocking stools.cc\n"
+			  "\xe2\x80\xa2 VPN connection active\n\n"
+			  "Error: %1")
+			  .arg(detail && detail[0] ? detail : "SSL connect error");
+
+	QMessageBox::warning(parent, title, text, QMessageBox::Ok);
+}
