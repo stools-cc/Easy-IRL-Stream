@@ -115,6 +115,7 @@ static void *irl_source_create(obs_data_t *settings, obs_source_t *source)
 	data->video_stream_idx = -1;
 	data->audio_stream_idx = -1;
 	data->active = true;
+	data->show_watermark = true;
 
 	pthread_mutex_init(&data->mutex, NULL);
 

@@ -60,6 +60,9 @@ static char *api_get(const char *path, const char *token)
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, ua);
+#ifdef CURLSSLOPT_NATIVE_CA
+	curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NATIVE_CA);
+#endif
 
 	CURLcode res = curl_easy_perform(curl);
 	long http_code = 0;
@@ -107,6 +110,9 @@ static bool api_post(const char *path, const char *token, const char *json_body)
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_body);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, ua);
+#ifdef CURLSSLOPT_NATIVE_CA
+	curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NATIVE_CA);
+#endif
 
 	CURLcode res = curl_easy_perform(curl);
 	long http_code = 0;
@@ -220,6 +226,8 @@ static void apply_remote_settings(struct irl_source_data *data, const char *json
 
 	data->srtla_enabled = json_get_bool(json, "srtlaEnabled", data->srtla_enabled);
 	data->srtla_port = json_get_int(json, "srtlaPort", data->srtla_port);
+
+	data->show_watermark = !json_get_bool(json, "patreon", false);
 
 	bfree(data->duckdns_domain);
 	data->duckdns_domain = json_get_string(json, "duckdnsDomain");

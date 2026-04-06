@@ -1,4 +1,5 @@
 #include "media-decoder.h"
+#include "watermark.h"
 
 bool decoder_open(struct irl_source_data *data)
 {
@@ -173,6 +174,10 @@ static void output_video_frame(struct irl_source_data *data, AVFrame *frame)
 			     obs_fmt, full_range);
 		}
 
+		if (data->show_watermark &&
+		    av_frame_make_writable(frame) >= 0)
+			watermark_draw(frame);
+
 		enum video_colorspace cs = (h >= 720) ? VIDEO_CS_709
 						      : VIDEO_CS_601;
 
@@ -227,6 +232,18 @@ static void output_video_frame(struct irl_source_data *data, AVFrame *frame)
 	sws_scale(data->sws_ctx, (const uint8_t *const *)frame->data,
 		  frame->linesize, 0, h, data->video_dst_data,
 		  data->video_dst_linesize);
+
+	if (data->show_watermark) {
+		AVFrame tmp = {0};
+		tmp.data[0] = data->video_dst_data[0];
+		tmp.data[1] = data->video_dst_data[1];
+		tmp.linesize[0] = data->video_dst_linesize[0];
+		tmp.linesize[1] = data->video_dst_linesize[1];
+		tmp.width = w;
+		tmp.height = h;
+		tmp.format = AV_PIX_FMT_NV12;
+		watermark_draw(&tmp);
+	}
 
 	enum video_colorspace cs = (h >= 720) ? VIDEO_CS_709 : VIDEO_CS_601;
 

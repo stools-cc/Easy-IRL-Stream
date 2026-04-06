@@ -260,6 +260,9 @@ static void *ip_detect_thread(void *arg)
 
 /* ---- Update check ---- */
 
+static volatile bool g_update_required = false;
+static char g_remote_version[64] = "";
+
 struct update_mem_buf {
 	char *data;
 	size_t size;
@@ -296,18 +299,8 @@ struct update_ctx {
 #include "help-dialog.hpp"
 #include "stats-dialog.hpp"
 
-static void task_show_update_dialog(void *param)
+static bool check_update_blocking(void)
 {
-	struct update_ctx *ctx = param;
-	update_dialog_show(ctx->version, obs_get_locale());
-	free(ctx);
-}
-
-static void *update_check_thread(void *arg)
-{
-	UNUSED_PARAMETER(arg);
-	os_sleep_ms(5000);
-
 	char url[256];
 	snprintf(url, sizeof(url), "%s%s%s",
 		 obf_https_prefix(), obf_stools_host(),
@@ -317,14 +310,18 @@ static void *update_check_thread(void *arg)
 	snprintf(ua, sizeof(ua), "%s%s", obf_ua_prefix(), PLUGIN_VERSION);
 
 	CURL *curl = curl_easy_init();
-	if (!curl) return NULL;
+	if (!curl) return false;
 
 	struct update_mem_buf buf = {NULL, 0};
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, update_write_cb);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
-	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, ua);
+#ifdef CURLSSLOPT_NATIVE_CA
+	curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NATIVE_CA);
+#endif
 
 	CURLcode res = curl_easy_perform(curl);
 	long http_code = 0;
@@ -333,38 +330,30 @@ static void *update_check_thread(void *arg)
 
 	if (res != CURLE_OK || http_code != 200 || !buf.data) {
 		free(buf.data);
-		return NULL;
+		return false;
 	}
 
-	/* Parse {"version":"x.y.z"} */
 	const char *vkey = strstr(buf.data, "\"version\"");
-	if (!vkey) { free(buf.data); return NULL; }
+	if (!vkey) { free(buf.data); return false; }
 	const char *vstart = strchr(vkey + 9, '"');
-	if (!vstart) { free(buf.data); return NULL; }
+	if (!vstart) { free(buf.data); return false; }
 	vstart++;
 	const char *vend = strchr(vstart, '"');
-	if (!vend || vend - vstart > 60) { free(buf.data); return NULL; }
+	if (!vend || vend - vstart > 60) { free(buf.data); return false; }
 
-	char remote_ver[64];
 	size_t vlen = (size_t)(vend - vstart);
-	memcpy(remote_ver, vstart, vlen);
-	remote_ver[vlen] = '\0';
+	memcpy(g_remote_version, vstart, vlen);
+	g_remote_version[vlen] = '\0';
 	free(buf.data);
 
-	if (compare_versions(remote_ver, PLUGIN_VERSION) > 0) {
-		blog(LOG_DEBUG, "[%s] New version available: %s (current: %s)",
-		     PLUGIN_NAME, remote_ver, PLUGIN_VERSION);
+	return compare_versions(g_remote_version, PLUGIN_VERSION) > 0;
+}
 
-		struct update_ctx *ctx = malloc(sizeof(*ctx));
-		if (ctx) {
-			snprintf(ctx->version, sizeof(ctx->version), "%s",
-				 remote_ver);
-			obs_queue_task(OBS_TASK_UI, task_show_update_dialog,
-				       ctx, false);
-		}
-	}
-
-	return NULL;
+static void task_show_forced_update(void *param)
+{
+	struct update_ctx *ctx = param;
+	forced_update_show(ctx->version, obs_get_locale());
+	free(ctx);
 }
 
 /* ---- Tools menu ---- */
@@ -388,15 +377,19 @@ bool obs_module_load(void)
 {
 	curl_global_init(CURL_GLOBAL_DEFAULT);
 
+	if (check_update_blocking()) {
+		g_update_required = true;
+		blog(LOG_WARNING,
+		     "[%s] Update required (v%s available), plugin disabled",
+		     PLUGIN_NAME, g_remote_version);
+		return true;
+	}
+
 	obs_register_source(&irl_source_info);
 
 	g_ip_thread_active = true;
 	if (pthread_create(&g_ip_thread, NULL, ip_detect_thread, NULL) != 0)
 		g_ip_thread_active = false;
-
-	pthread_t update_thread;
-	if (pthread_create(&update_thread, NULL, update_check_thread, NULL) == 0)
-		pthread_detach(update_thread);
 
 	blog(LOG_INFO, "[%s] Plugin loaded (v%s)", PLUGIN_NAME, PLUGIN_VERSION);
 	return true;
@@ -404,6 +397,17 @@ bool obs_module_load(void)
 
 void obs_module_post_load(void)
 {
+	if (g_update_required) {
+		struct update_ctx *ctx = malloc(sizeof(*ctx));
+		if (ctx) {
+			snprintf(ctx->version, sizeof(ctx->version), "%s",
+				 g_remote_version);
+			obs_queue_task(OBS_TASK_UI, task_show_forced_update,
+				       ctx, false);
+		}
+		return;
+	}
+
 	obs_frontend_add_tools_menu_item(tr_tools_menu_help(),
 					 tools_menu_cb, NULL);
 	obs_frontend_add_tools_menu_item(tr_tools_menu_stats(),

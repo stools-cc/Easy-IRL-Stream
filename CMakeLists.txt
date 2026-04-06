@@ -22,6 +22,7 @@ add_library(easy-irl-stream MODULE
     src/webhook.c
     src/srtla-server.c
     src/remote-settings.c
+    src/watermark.c
     src/obfuscation.cpp
     src/help-dialog.cpp
     src/stats-dialog.cpp

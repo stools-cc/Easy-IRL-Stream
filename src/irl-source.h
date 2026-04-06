@@ -115,6 +115,9 @@ struct irl_source_data {
 	char *webhook_url;
 	char *custom_command;
 
+	/* Watermark (non-patreon) */
+	bool show_watermark;
+
 	/* Decoder debug counters (per-source) */
 	int dec_vid_pkt_count;
 	int dec_vid_frame_count;

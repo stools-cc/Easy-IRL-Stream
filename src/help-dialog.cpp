@@ -56,6 +56,8 @@ struct HelpStrings {
 	const char *srtla_step4;
 	const char *faq_q7;
 	const char *faq_a7;
+	const char *faq_q8;
+	const char *faq_a8;
 };
 
 static const HelpStrings LANG_DE = {
@@ -135,6 +137,11 @@ static const HelpStrings LANG_DE = {
 	"der die Pakete entgegennimmt und an den internen SRT-Server weiterleitet.<br>"
 	"<b>Standard-Ports:</b> SRTLA = UDP <code>5000</code>, SRT = UDP <code>9000</code><br>"
 	"<b>Wichtig:</b> In Moblin den <b>SRTLA-Port</b> (5000) angeben, nicht den SRT-Port (9000)!",
+	"Was ist das Wasserzeichen im Video?",
+	"In der kostenlosen Version wird <i>Easy IRL Stream &ndash; stools.cc</i> "
+	"unten rechts im Bild eingeblendet. Als "
+	"<a href='https://www.patreon.com/checkout/stoolscc?rid=27957669'>Patreon-Unterst&uuml;tzer</a> "
+	"wird das Wasserzeichen automatisch entfernt.",
 };
 
 static const HelpStrings LANG_EN = {
@@ -212,6 +219,11 @@ static const HelpStrings LANG_EN = {
 	"receives the packets and forwards them to the internal SRT server.<br>"
 	"<b>Default ports:</b> SRTLA = UDP <code>5000</code>, SRT = UDP <code>9000</code><br>"
 	"<b>Important:</b> In Moblin, enter the <b>SRTLA port</b> (5000), not the SRT port (9000)!",
+	"What is the watermark in the video?",
+	"The free version shows <i>Easy IRL Stream &ndash; stools.cc</i> "
+	"in the bottom-right corner of the video. "
+	"<a href='https://www.patreon.com/checkout/stoolscc?rid=27957669'>Patreon supporters</a> "
+	"get the watermark removed automatically.",
 };
 
 static QString build_html(const char *local_ip, const char *external_ip,
@@ -307,6 +319,7 @@ static QString build_html(const char *local_ip, const char *external_ip,
 	       + QString("<div class='q'>%1</div><div class='a'>%2</div>").arg(L.faq_q5).arg(L.faq_a5)
 	       + QString("<div class='q'>%1</div><div class='a'>%2</div>").arg(L.faq_q6).arg(L.faq_a6)
 	       + QString("<div class='q'>%1</div><div class='a'>%2</div>").arg(L.faq_q7).arg(L.faq_a7)
+	       + QString("<div class='q'>%1</div><div class='a'>%2</div>").arg(L.faq_q8).arg(L.faq_a8)
 
 	       + "</body></html>";
 }
@@ -387,4 +400,34 @@ extern "C" void update_dialog_show(const char *new_version, const char *locale)
 			 obf_dash_downloads_path());
 		open_url(url);
 	}
+}
+
+extern "C" void forced_update_show(const char *new_version, const char *locale)
+{
+	bool is_de = locale && (strncmp(locale, "de", 2) == 0);
+
+	QWidget *parent = (QWidget *)obs_frontend_get_main_window();
+
+	QString title = is_de ? "Update erforderlich"
+			      : "Update Required";
+
+	QString text = is_de
+		? QString::fromUtf8(
+			  "Easy IRL Stream v%1 ist verf\xc3\xbc""gbar.\n\n"
+			  "Bitte aktualisiere das Plugin, um es weiter "
+			  "nutzen zu k\xc3\xb6""nnen.\n\n"
+			  "Die Download-Seite wird jetzt ge\xc3\xb6""ffnet.")
+			  .arg(new_version)
+		: QString("Easy IRL Stream v%1 is available.\n\n"
+			  "Please update the plugin to continue using it.\n\n"
+			  "The download page will now open.")
+			  .arg(new_version);
+
+	QMessageBox::warning(parent, title, text, QMessageBox::Ok);
+
+	char url[256];
+	snprintf(url, sizeof(url), "%s%s%s",
+		 obf_https_prefix(), obf_stools_host(),
+		 obf_dash_downloads_path());
+	open_url(url);
 }

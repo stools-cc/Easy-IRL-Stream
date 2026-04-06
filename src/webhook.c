@@ -44,6 +44,9 @@ static void webhook_do_send(const char *url, const char *json_body)
 	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_response);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, "easy-irl-stream-webhook/1.0");
+#ifdef CURLSSLOPT_NATIVE_CA
+	curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NATIVE_CA);
+#endif
 
 	CURLcode res = curl_easy_perform(curl);
 	if (res != CURLE_OK) {
