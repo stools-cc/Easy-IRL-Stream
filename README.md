@@ -16,11 +16,6 @@ OBS Studio plugin for IRL streamers. Receives an RTMP or SRT stream directly in 
 
 For setup instructions, FAQ and downloads visit **[stools.cc/p/easy-irl-stream](https://stools.cc/p/easy-irl-stream)**.
 
-
-## AI-Powered Development
-
-This project was built with the support of **Anthropic Claude Opus 4.6**. We embrace AI-assisted development — this is an AI-friendly project. The future is now.
-
 ## License
 
 This project is licensed under the [GNU General Public License v2.0](LICENSE).
