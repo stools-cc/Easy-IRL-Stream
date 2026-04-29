@@ -374,7 +374,7 @@ void event_handler_tick(struct irl_source_data *data)
 	if (state == CONN_STATE_CONNECTED)
 		check_quality(data);
 
-	if (state != CONN_STATE_DISCONNECTED)
+	if (state != CONN_STATE_DISCONNECTED && state != CONN_STATE_LISTENING)
 		return;
 
 	pthread_mutex_lock(&data->mutex);
@@ -383,7 +383,7 @@ void event_handler_tick(struct irl_source_data *data)
 	int timeout = data->disconnect_timeout_sec;
 	pthread_mutex_unlock(&data->mutex);
 
-	if (already_fired || timeout <= 0)
+	if (already_fired || timeout <= 0 || disc_time == 0)
 		return;
 
 	uint64_t elapsed_ns = os_gettime_ns() - disc_time;
