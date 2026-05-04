@@ -81,7 +81,7 @@ static int curl_debug_cb(CURL *handle, curl_infotype type, char *data,
 		len--;
 	buf[len] = '\0';
 
-	blog(LOG_INFO, "[%s] curl: %s%s", PLUGIN_NAME, prefix, buf);
+	dbg_log(LOG_INFO, "[%s] curl: %s%s", PLUGIN_NAME, prefix, buf);
 	return 0;
 }
 
@@ -159,16 +159,16 @@ static char *api_get(const char *path, const char *token)
 	curl_easy_cleanup(curl);
 
 	if (res != CURLE_OK) {
-		blog(LOG_WARNING, "[%s] API GET %s failed: %s (%s)",
-		     PLUGIN_NAME, path, curl_easy_strerror(res),
-		     errbuf[0] ? errbuf : "no details");
+		dbg_log(LOG_WARNING, "[%s] API GET %s failed: %s (%s)",
+			PLUGIN_NAME, path, curl_easy_strerror(res),
+			errbuf[0] ? errbuf : "no details");
 		maybe_show_ssl_error(res, errbuf);
 		free(buf.data);
 		return NULL;
 	}
 	if (http_code != 200) {
-		blog(LOG_WARNING, "[%s] API GET %s returned HTTP %ld",
-		     PLUGIN_NAME, path, http_code);
+		dbg_log(LOG_WARNING, "[%s] API GET %s returned HTTP %ld",
+			PLUGIN_NAME, path, http_code);
 		free(buf.data);
 		return NULL;
 	}
@@ -212,15 +212,15 @@ static bool api_post(const char *path, const char *token, const char *json_body)
 	curl_easy_cleanup(curl);
 
 	if (res != CURLE_OK) {
-		blog(LOG_WARNING, "[%s] API POST %s failed: %s (%s)",
-		     PLUGIN_NAME, path, curl_easy_strerror(res),
-		     errbuf[0] ? errbuf : "no details");
+		dbg_log(LOG_WARNING, "[%s] API POST %s failed: %s (%s)",
+			PLUGIN_NAME, path, curl_easy_strerror(res),
+			errbuf[0] ? errbuf : "no details");
 		maybe_show_ssl_error(res, errbuf);
 		return false;
 	}
 	if (http_code != 200) {
-		blog(LOG_WARNING, "[%s] API POST %s returned HTTP %ld",
-		     PLUGIN_NAME, path, http_code);
+		dbg_log(LOG_WARNING, "[%s] API POST %s returned HTTP %ld",
+			PLUGIN_NAME, path, http_code);
 		return false;
 	}
 
@@ -320,8 +320,6 @@ static void apply_remote_settings(struct irl_source_data *data, const char *json
 	data->srtla_enabled = json_get_bool(json, "srtlaEnabled", data->srtla_enabled);
 	data->srtla_port = json_get_int(json, "srtlaPort", data->srtla_port);
 
-	data->show_watermark = !json_get_bool(json, "patreon", false);
-
 	bfree(data->duckdns_domain);
 	data->duckdns_domain = json_get_string(json, "duckdnsDomain");
 
@@ -352,6 +350,89 @@ static void apply_remote_settings(struct irl_source_data *data, const char *json
 		ingest_thread_start(data);
 }
 
+/* ---- Update check via /api/releases ---- */
+
+static int compare_versions(const char *a, const char *b)
+{
+	int a1 = 0, a2 = 0, a3 = 0, b1 = 0, b2 = 0, b3 = 0;
+	sscanf(a, "%d.%d.%d", &a1, &a2, &a3);
+	sscanf(b, "%d.%d.%d", &b1, &b2, &b3);
+	if (a1 != b1) return a1 - b1;
+	if (a2 != b2) return a2 - b2;
+	return a3 - b3;
+}
+
+struct update_show_ctx {
+	char version[64];
+};
+
+static void task_show_forced_update(void *param)
+{
+	struct update_show_ctx *ctx = param;
+	forced_update_show(ctx->version, obs_get_locale());
+	free(ctx);
+}
+
+static bool check_update_with_token(const char *token)
+{
+	char *json = api_get(obf_api_releases_path(), token);
+	if (!json)
+		return false;
+
+	/* Find first stable release: scan for "prerelease":false */
+	const char *pos = json;
+	char remote_ver[64] = "";
+
+	while ((pos = strstr(pos, "\"version\"")) != NULL) {
+		/* Extract version value */
+		const char *vstart = strchr(pos + 9, '"');
+		if (!vstart) break;
+		vstart++;
+		const char *vend = strchr(vstart, '"');
+		if (!vend || (vend - vstart) > 60) break;
+
+		/* Check if this release has "prerelease":false nearby */
+		const char *next_version = strstr(vend, "\"version\"");
+		const char *pre = strstr(vend, "\"prerelease\"");
+		if (pre && (!next_version || pre < next_version)) {
+			const char *pval = pre + 12;
+			while (*pval == ' ' || *pval == ':') pval++;
+			if (strncmp(pval, "false", 5) == 0) {
+				const char *v = vstart;
+				if (*v == 'v') v++;
+				size_t len = (size_t)(vend - v);
+				memcpy(remote_ver, v, len);
+				remote_ver[len] = '\0';
+				break;
+			}
+		}
+
+		pos = vend;
+	}
+
+	free(json);
+
+	if (!remote_ver[0])
+		return false;
+
+	if (compare_versions(remote_ver, PLUGIN_VERSION) > 0) {
+		dbg_log(LOG_WARNING,
+			"[%s] Update required: v%s available (current: %s)",
+			PLUGIN_NAME, remote_ver, PLUGIN_VERSION);
+
+		struct update_show_ctx *ctx = malloc(sizeof(*ctx));
+		if (ctx) {
+			snprintf(ctx->version, sizeof(ctx->version), "%s",
+				 remote_ver);
+			obs_queue_task(OBS_TASK_UI, task_show_forced_update,
+				       ctx, false);
+		}
+		return true;
+	}
+
+	return false;
+}
+
 /* ---- Background poll thread ---- */
 
 static pthread_t g_settings_thread;
@@ -365,6 +446,8 @@ static void *settings_poll_thread(void *arg)
 
 	os_sleep_ms(3000);
 
+	bool update_checked = false;
+
 	while (g_settings_thread_active) {
 		obs_data_t *settings = obs_source_get_settings(data->source);
 		const char *api_token = obs_data_get_string(settings, "api_token");
@@ -372,12 +455,38 @@ static void *settings_poll_thread(void *arg)
 		obs_data_release(settings);
 
 		if (token_copy) {
+			if (!update_checked) {
+				update_checked = true;
+				if (check_update_with_token(token_copy)) {
+#ifndef DEBUG_BUILD
+					ingest_thread_stop(data);
+					bfree(token_copy);
+					g_settings_thread_active = false;
+					break;
+#endif
+				}
+			}
+
 			char *json = api_get(obf_api_settings_path(), token_copy);
 			bool force_sync = false;
 			if (json) {
 				apply_remote_settings(data, json);
 				force_sync = json_get_bool(json, "requestSync", false);
 				free(json);
+			}
+
+			char *me_json = api_get(obf_api_me_path(), token_copy);
+			if (me_json) {
+				bool is_patreon = json_get_bool(me_json, "patreonSub", false);
+				data->show_watermark = !is_patreon;
+				dbg_log(LOG_INFO, "[%s] Patreon check: patreonSub=%s, watermark=%s",
+					PLUGIN_NAME,
+					is_patreon ? "true" : "false",
+					data->show_watermark ? "on" : "off");
+				free(me_json);
+			} else {
+				dbg_log(LOG_WARNING, "[%s] /api/me request failed, watermark stays on",
+					PLUGIN_NAME);
 			}
 
 			remote_report_obs_info(token_copy);

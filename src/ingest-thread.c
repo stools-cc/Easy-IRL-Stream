@@ -40,7 +40,7 @@ static void build_url(struct irl_source_data *data, char *buf, size_t sz)
 				dstr_catf(&url, "&passphrase=%s",
 					  data->srt_passphrase);
 			} else {
-				blog(LOG_WARNING,
+				dbg_log(LOG_WARNING,
 				     "[%s] SRT passphrase ignored: "
 				     "must be 10-79 characters (got %zu)",
 				     PLUGIN_NAME, plen);
@@ -94,7 +94,7 @@ static void *ingest_thread_func(void *arg)
 
 		os_atomic_set_long(&data->connection_state,
 				   CONN_STATE_LISTENING);
-		blog(LOG_DEBUG, "[%s] Listening: %s", PLUGIN_NAME, url);
+		dbg_log(LOG_DEBUG, "[%s] Listening: %s", PLUGIN_NAME, url);
 
 		AVFormatContext *fmt_ctx = avformat_alloc_context();
 		if (!fmt_ctx) {
@@ -119,7 +119,7 @@ static void *ingest_thread_func(void *arg)
 				break;
 			char errbuf[256];
 			av_strerror(ret, errbuf, sizeof(errbuf));
-			blog(LOG_WARNING,
+			dbg_log(LOG_WARNING,
 			     "[%s] avformat_open_input failed: %s",
 			     PLUGIN_NAME, errbuf);
 			os_sleep_ms(2000);
@@ -130,7 +130,7 @@ static void *ingest_thread_func(void *arg)
 
 		ret = avformat_find_stream_info(fmt_ctx, NULL);
 		if (ret < 0) {
-			blog(LOG_WARNING, "[%s] Could not find stream info",
+			dbg_log(LOG_WARNING, "[%s] Could not find stream info",
 			     PLUGIN_NAME);
 			avformat_close_input(&data->fmt_ctx);
 			data->fmt_ctx = NULL;
@@ -191,7 +191,7 @@ static void *ingest_thread_func(void *arg)
 	srtla_server_stop(&data->srtla);
 
 	os_atomic_set_long(&data->connection_state, CONN_STATE_IDLE);
-	blog(LOG_DEBUG, "[%s] Ingest thread exited", PLUGIN_NAME);
+	dbg_log(LOG_DEBUG, "[%s] Ingest thread exited", PLUGIN_NAME);
 	return NULL;
 }
 
@@ -207,7 +207,7 @@ void ingest_thread_start(struct irl_source_data *data)
 			   data) == 0) {
 		data->thread_created = true;
 	} else {
-		blog(LOG_ERROR, "[%s] Failed to create ingest thread",
+		dbg_log(LOG_ERROR, "[%s] Failed to create ingest thread",
 		     PLUGIN_NAME);
 		data->active = false;
 	}
@@ -224,5 +224,5 @@ void ingest_thread_stop(struct irl_source_data *data)
 	data->thread_created = false;
 
 	os_atomic_set_long(&data->connection_state, CONN_STATE_IDLE);
-	blog(LOG_DEBUG, "[%s] Ingest thread stopped", PLUGIN_NAME);
+	dbg_log(LOG_DEBUG, "[%s] Ingest thread stopped", PLUGIN_NAME);
 }

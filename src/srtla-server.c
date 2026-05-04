@@ -1,4 +1,5 @@
 #include "srtla-server.h"
+#include "debug-log.h"
 #include <util/platform.h>
 #include <string.h>
 #include <stdlib.h>
@@ -143,7 +144,7 @@ static void add_connection_to_group(struct srtla_group *g,
 		c->addr_len = from_len;
 		c->last_activity_ns = os_gettime_ns();
 		c->active = true;
-		blog(LOG_DEBUG,
+		dbg_log(LOG_DEBUG,
 		     "[%s] SRTLA: connection %d added to group",
 		     PLUGIN_NAME, g->num_conns);
 	}
@@ -187,13 +188,13 @@ static void handle_reg1(struct srtla_state *state, const uint8_t *buf, int len,
 			const struct sockaddr_storage *from, socklen_t from_len)
 {
 	if (len < SRTLA_REG_PKT_SIZE) {
-		blog(LOG_WARNING,
+		dbg_log(LOG_WARNING,
 		     "[%s] SRTLA: REG1 too short (%d, need %d)",
 		     PLUGIN_NAME, len, SRTLA_REG_PKT_SIZE);
 		return;
 	}
 
-	blog(LOG_DEBUG, "[%s] SRTLA: Got REG1 (create group)", PLUGIN_NAME);
+	dbg_log(LOG_DEBUG, "[%s] SRTLA: Got REG1 (create group)", PLUGIN_NAME);
 
 	uint8_t group_id[SRTLA_GROUP_ID_LEN];
 	memcpy(group_id, buf + 2, 128);
@@ -202,7 +203,7 @@ static void handle_reg1(struct srtla_state *state, const uint8_t *buf, int len,
 		group_id[128 + i] = (uint8_t)(rand() & 0xFF);
 
 	if (find_group(state, group_id)) {
-		blog(LOG_WARNING,
+		dbg_log(LOG_WARNING,
 		     "[%s] SRTLA: group ID collision, ignoring",
 		     PLUGIN_NAME);
 		return;
@@ -210,7 +211,7 @@ static void handle_reg1(struct srtla_state *state, const uint8_t *buf, int len,
 
 	struct srtla_group *g = alloc_group(state);
 	if (!g) {
-		blog(LOG_WARNING,
+		dbg_log(LOG_WARNING,
 		     "[%s] SRTLA: max groups reached",
 		     PLUGIN_NAME);
 		return;
@@ -221,7 +222,7 @@ static void handle_reg1(struct srtla_state *state, const uint8_t *buf, int len,
 	memcpy(g->group_id, group_id, SRTLA_GROUP_ID_LEN);
 	g->srt_sock = create_srt_forward_sock(state->srt_port);
 	if (g->srt_sock == SRTLA_INVALID_SOCKET) {
-		blog(LOG_WARNING,
+		dbg_log(LOG_WARNING,
 		     "[%s] SRTLA: failed to create SRT forward socket",
 		     PLUGIN_NAME);
 		return;
@@ -229,7 +230,7 @@ static void handle_reg1(struct srtla_state *state, const uint8_t *buf, int len,
 	g->active = true;
 	g->last_activity_ns = os_gettime_ns();
 
-	blog(LOG_DEBUG,
+	dbg_log(LOG_DEBUG,
 	     "[%s] SRTLA: group created, sending REG2 response",
 	     PLUGIN_NAME);
 
@@ -249,13 +250,13 @@ static void handle_reg2(struct srtla_state *state, const uint8_t *buf, int len,
 			const struct sockaddr_storage *from, socklen_t from_len)
 {
 	if (len < SRTLA_REG_PKT_SIZE) {
-		blog(LOG_WARNING,
+		dbg_log(LOG_WARNING,
 		     "[%s] SRTLA: REG2 too short (%d, need %d)",
 		     PLUGIN_NAME, len, SRTLA_REG_PKT_SIZE);
 		return;
 	}
 
-	blog(LOG_DEBUG,
+	dbg_log(LOG_DEBUG,
 	     "[%s] SRTLA: Got REG2 (register connection)",
 	     PLUGIN_NAME);
 
@@ -263,7 +264,7 @@ static void handle_reg2(struct srtla_state *state, const uint8_t *buf, int len,
 	struct srtla_group *g = find_group(state, gid);
 
 	if (!g) {
-		blog(LOG_DEBUG,
+		dbg_log(LOG_DEBUG,
 		     "[%s] SRTLA: unknown group, sending REG_NGP",
 		     PLUGIN_NAME);
 		uint8_t ngp[2];
@@ -276,7 +277,7 @@ static void handle_reg2(struct srtla_state *state, const uint8_t *buf, int len,
 	add_connection_to_group(g, from, from_len);
 	g->last_activity_ns = os_gettime_ns();
 
-	blog(LOG_DEBUG,
+	dbg_log(LOG_DEBUG,
 	     "[%s] SRTLA: connection registered, sending REG3 (%d conns)",
 	     PLUGIN_NAME, g->num_conns);
 
@@ -352,7 +353,7 @@ static void cleanup_stale_groups(struct srtla_state *state)
 		uint64_t age_ms =
 			(now - state->groups[i].last_activity_ns) / 1000000;
 		if (age_ms > 30000) {
-			blog(LOG_DEBUG,
+			dbg_log(LOG_DEBUG,
 			     "[%s] SRTLA: group %d timed out (age=%llu ms, last_ns=%llu, now_ns=%llu)",
 			     PLUGIN_NAME, i,
 			     (unsigned long long)age_ms,
@@ -371,7 +372,7 @@ static void *srtla_thread_func(void *arg)
 
 	state->listen_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (state->listen_sock == SRTLA_INVALID_SOCKET) {
-		blog(LOG_ERROR, "[%s] SRTLA: failed to create socket",
+		dbg_log(LOG_ERROR, "[%s] SRTLA: failed to create socket",
 		     PLUGIN_NAME);
 		return NULL;
 	}
@@ -387,7 +388,7 @@ static void *srtla_thread_func(void *arg)
 
 	if (bind(state->listen_sock, (struct sockaddr *)&bind_addr,
 		 sizeof(bind_addr)) != 0) {
-		blog(LOG_ERROR,
+		dbg_log(LOG_ERROR,
 		     "[%s] SRTLA: failed to bind port %d",
 		     PLUGIN_NAME, state->listen_port);
 		closesocket(state->listen_sock);
@@ -406,7 +407,7 @@ static void *srtla_thread_func(void *arg)
 	}
 #endif
 
-	blog(LOG_DEBUG,
+	dbg_log(LOG_DEBUG,
 	     "[%s] SRTLA: listening on UDP port %d, forwarding to SRT port %d",
 	     PLUGIN_NAME, state->listen_port, state->srt_port);
 
@@ -484,7 +485,7 @@ static void *srtla_thread_func(void *arg)
 								from_len);
 							g->last_activity_ns =
 								os_gettime_ns();
-							blog(LOG_DEBUG,
+							dbg_log(LOG_DEBUG,
 							     "[%s] SRTLA: auto-registered client (%d bytes)",
 							     PLUGIN_NAME, n);
 						} else {
@@ -504,15 +505,14 @@ static void *srtla_thread_func(void *arg)
 							n, 0);
 					g->last_activity_ns = os_gettime_ns();
 					if (sent < 0) {
-						blog(LOG_WARNING,
-						     "[%s] SRTLA: forward failed (err=%d)",
-						     PLUGIN_NAME,
 #ifdef _WIN32
-						     WSAGetLastError()
+						int fwd_err = WSAGetLastError();
 #else
-						     errno
+						int fwd_err = errno;
 #endif
-						);
+						dbg_log(LOG_WARNING,
+							"[%s] SRTLA: forward failed (err=%d)",
+							PLUGIN_NAME, fwd_err);
 					}
 
 					if (is_srt_data_packet(buf, n) &&
@@ -608,7 +608,7 @@ static void *srtla_thread_func(void *arg)
 	closesocket(state->listen_sock);
 	state->listen_sock = SRTLA_INVALID_SOCKET;
 
-	blog(LOG_DEBUG, "[%s] SRTLA: server stopped", PLUGIN_NAME);
+	dbg_log(LOG_DEBUG, "[%s] SRTLA: server stopped", PLUGIN_NAME);
 	return NULL;
 }
 
@@ -631,7 +631,7 @@ void srtla_server_start(struct srtla_state *state, int listen_port,
 	    0) {
 		state->thread_created = true;
 	} else {
-		blog(LOG_ERROR, "[%s] SRTLA: failed to create thread",
+		dbg_log(LOG_ERROR, "[%s] SRTLA: failed to create thread",
 		     PLUGIN_NAME);
 		state->running = false;
 	}

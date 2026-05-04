@@ -36,7 +36,7 @@ bool decoder_open(struct irl_source_data *data)
 		data->stats_video_width = par->width;
 		data->stats_video_height = par->height;
 		data->stats_video_pixfmt[0] = '\0';
-		blog(LOG_DEBUG,
+		dbg_log(LOG_DEBUG,
 		     "[%s] Video stream #%u: %s %dx%d",
 		     PLUGIN_NAME, i, codec->name, par->width,
 		     par->height);
@@ -64,7 +64,7 @@ bool decoder_open(struct irl_source_data *data)
 			 sizeof(data->stats_audio_codec), "%s",
 			 codec->name);
 		data->stats_audio_sample_rate = par->sample_rate;
-		blog(LOG_DEBUG,
+		dbg_log(LOG_DEBUG,
 		     "[%s] Audio stream #%u: %s %dHz",
 		     PLUGIN_NAME, i, codec->name,
 		     par->sample_rate);
@@ -72,7 +72,7 @@ bool decoder_open(struct irl_source_data *data)
 	}
 
 	if (data->video_stream_idx < 0) {
-		blog(LOG_WARNING, "[%s] No video stream found", PLUGIN_NAME);
+		dbg_log(LOG_WARNING, "[%s] No video stream found", PLUGIN_NAME);
 		return false;
 	}
 
@@ -167,7 +167,7 @@ static void output_video_frame(struct irl_source_data *data, AVFrame *frame)
 			data->sws_width = w;
 			data->sws_height = h;
 			data->sws_src_fmt = src_fmt;
-			blog(LOG_DEBUG,
+			dbg_log(LOG_DEBUG,
 			     "[%s] Video: %s %dx%d -> direct output (fmt=%d, full_range=%d)",
 			     PLUGIN_NAME,
 			     av_get_pix_fmt_name(src_fmt), w, h,
@@ -220,7 +220,7 @@ static void output_video_frame(struct irl_source_data *data, AVFrame *frame)
 		data->sws_height = h;
 		data->sws_src_fmt = src_fmt;
 
-		blog(LOG_DEBUG,
+		dbg_log(LOG_DEBUG,
 		     "[%s] Video: %s %dx%d -> NV12 sws conversion",
 		     PLUGIN_NAME,
 		     av_get_pix_fmt_name(src_fmt), w, h);
@@ -329,7 +329,7 @@ bool decoder_decode_packet(struct irl_source_data *data, AVPacket *pkt)
 
 		if (send_ret < 0) {
 			if (data->dec_vid_pkt_count <= 5)
-				blog(LOG_WARNING,
+				dbg_log(LOG_WARNING,
 				     "[%s] avcodec_send_packet failed: %d (pkt #%d, size=%d)",
 				     PLUGIN_NAME, send_ret,
 				     data->dec_vid_pkt_count, pkt->size);
@@ -341,7 +341,7 @@ bool decoder_decode_packet(struct irl_source_data *data, AVPacket *pkt)
 			data->dec_vid_frame_count++;
 			if (data->dec_vid_frame_count <= 3 ||
 			    (data->dec_vid_frame_count % 300 == 0))
-				blog(LOG_DEBUG,
+				dbg_log(LOG_DEBUG,
 				     "[%s] Video frame #%d decoded (fmt=%d %dx%d)",
 				     PLUGIN_NAME,
 				     data->dec_vid_frame_count,
@@ -355,7 +355,7 @@ bool decoder_decode_packet(struct irl_source_data *data, AVPacket *pkt)
 
 		if (data->dec_vid_pkt_count == 30 &&
 		    data->dec_vid_frame_count == 0)
-			blog(LOG_WARNING,
+			dbg_log(LOG_WARNING,
 			     "[%s] 30 video packets sent but 0 frames decoded",
 			     PLUGIN_NAME);
 

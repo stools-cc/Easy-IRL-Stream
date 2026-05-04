@@ -131,7 +131,7 @@ static void fire_low_quality_actions(struct irl_source_data *data)
 	char *src_copy = bstrdup(src_name ? src_name : "Easy IRL Stream");
 	pthread_mutex_unlock(&data->mutex);
 
-	blog(LOG_DEBUG, "[%s] Low quality detected (%lld kbps)", PLUGIN_NAME,
+	dbg_log(LOG_DEBUG, "[%s] Low quality detected (%lld kbps)", PLUGIN_NAME,
 	     (long long)data->current_bitrate_kbps);
 
 	queue_scene_switch(scene);
@@ -168,7 +168,7 @@ static void fire_quality_recovered_actions(struct irl_source_data *data)
 	char *src_copy = bstrdup(src_name ? src_name : "Easy IRL Stream");
 	pthread_mutex_unlock(&data->mutex);
 
-	blog(LOG_DEBUG, "[%s] Quality recovered (%lld kbps)", PLUGIN_NAME,
+	dbg_log(LOG_DEBUG, "[%s] Quality recovered (%lld kbps)", PLUGIN_NAME,
 	     (long long)data->current_bitrate_kbps);
 
 	queue_scene_switch(scene);
@@ -210,7 +210,7 @@ static void fire_disconnect_actions(struct irl_source_data *data)
 	char *src_copy = bstrdup(src_name ? src_name : "Easy IRL Stream");
 	pthread_mutex_unlock(&data->mutex);
 
-	blog(LOG_DEBUG, "[%s] Firing disconnect actions", PLUGIN_NAME);
+	dbg_log(LOG_DEBUG, "[%s] Firing disconnect actions", PLUGIN_NAME);
 
 	queue_scene_switch(scene);
 	queue_overlay(overlay, true);
@@ -249,7 +249,7 @@ static void fire_reconnect_actions(struct irl_source_data *data)
 	char *src_copy = bstrdup(src_name ? src_name : "Easy IRL Stream");
 	pthread_mutex_unlock(&data->mutex);
 
-	blog(LOG_DEBUG, "[%s] Firing reconnect actions", PLUGIN_NAME);
+	dbg_log(LOG_DEBUG, "[%s] Firing reconnect actions", PLUGIN_NAME);
 
 	queue_scene_switch(scene);
 	queue_overlay(overlay, false);
@@ -272,7 +272,7 @@ static void fire_reconnect_actions(struct irl_source_data *data)
 
 void event_handler_on_connect(struct irl_source_data *data)
 {
-	blog(LOG_DEBUG, "[%s] Client connected", PLUGIN_NAME);
+	dbg_log(LOG_DEBUG, "[%s] Client connected", PLUGIN_NAME);
 
 	bool was_disconnected;
 	pthread_mutex_lock(&data->mutex);
@@ -295,7 +295,7 @@ void event_handler_on_connect(struct irl_source_data *data)
 
 void event_handler_on_disconnect(struct irl_source_data *data)
 {
-	blog(LOG_DEBUG, "[%s] Client disconnected", PLUGIN_NAME);
+	dbg_log(LOG_DEBUG, "[%s] Client disconnected", PLUGIN_NAME);
 
 	pthread_mutex_lock(&data->mutex);
 	data->disconnect_time_ns = os_gettime_ns();

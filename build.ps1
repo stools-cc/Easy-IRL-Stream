@@ -90,6 +90,8 @@ if (-not (Test-Path "$OBS_LIBS\obs.lib") -or (Get-Item "$OBS_LIBS\obs.lib").Leng
 
 # --- 5. Build ---
 Write-Host "[5/5] Building..."
+$debugFlag = if ($env:DEBUG_BUILD -eq "1") { "-DDEBUG_BUILD=ON" } else { "-DDEBUG_BUILD=OFF" }
+
 cmake -S $ROOT -B $BUILD_DIR -G "Ninja" `
     -DCMAKE_BUILD_TYPE=RelWithDebInfo `
     -DCMAKE_C_COMPILER=cl `
@@ -97,7 +99,8 @@ cmake -S $ROOT -B $BUILD_DIR -G "Ninja" `
     -DOBS_SOURCE_DIR="$OBS_SRC" `
     -DOBS_LIB_DIR="$OBS_LIBS" `
     -DFFMPEG_DIR="$OBS_DEPS" `
-    -DQT6_DIR="$QT6_DIR"
+    -DQT6_DIR="$QT6_DIR" `
+    $debugFlag
 
 cmake --build $BUILD_DIR --config RelWithDebInfo
 

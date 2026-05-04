@@ -20,6 +20,8 @@
 #define PLUGIN_NAME "Easy IRL Stream"
 #define SOURCE_ID   "easy_irl_stream_source"
 
+#include "debug-log.h"
+
 /* IP detection globals (filled by plugin-main.c on startup) */
 extern char g_local_ip[64];
 extern char g_external_ip[64];

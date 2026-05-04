@@ -1,4 +1,4 @@
-#include <obs-module.h>
+﻿#include <obs-module.h>
 #include <obs-frontend-api.h>
 #include <util/threading.h>
 #include <string.h>
@@ -25,6 +25,8 @@
 #include "irl-source.h"
 #include "obfuscation.h"
 #include "translations.h"
+#include "help-dialog.hpp"
+#include "stats-dialog.hpp"
 
 OBS_DECLARE_MODULE()
 
@@ -184,10 +186,10 @@ void duckdns_update(const char *domain, const char *token)
 	http_get_body(obf_duckdns_host(), path, result, sizeof(result));
 
 	if (strncmp(result, "OK", 2) == 0 || strncmp(result, "KO", 2) == 0) {
-		blog(LOG_DEBUG, "[%s] DuckDNS update for %s.duckdns.org: %s",
+		dbg_log(LOG_DEBUG, "[%s] DuckDNS update for %s.duckdns.org: %s",
 		     PLUGIN_NAME, domain, result);
 	} else {
-		blog(LOG_WARNING, "[%s] DuckDNS update failed: %s",
+		dbg_log(LOG_WARNING, "[%s] DuckDNS update failed: %s",
 		     PLUGIN_NAME, result);
 	}
 }
@@ -230,7 +232,7 @@ static void *ip_detect_thread(void *arg)
 	detect_local_ip();
 	http_get_body(obf_ipify_host(), "/", g_external_ip,
 		      sizeof(g_external_ip));
-	blog(LOG_DEBUG, "[%s] Local IP: %s, External IP: %s", PLUGIN_NAME,
+	dbg_log(LOG_DEBUG, "[%s] Local IP: %s, External IP: %s", PLUGIN_NAME,
 	     g_local_ip, g_external_ip);
 
 	while (g_ip_thread_active) {
@@ -246,7 +248,7 @@ static void *ip_detect_thread(void *arg)
 
 		if (new_ip[0] && strcmp(new_ip, "?") != 0 &&
 		    strcmp(new_ip, g_external_ip) != 0) {
-			blog(LOG_DEBUG,
+			dbg_log(LOG_DEBUG,
 			     "[%s] External IP changed: %s -> %s",
 			     PLUGIN_NAME, g_external_ip, new_ip);
 			snprintf(g_external_ip, sizeof(g_external_ip),
@@ -256,161 +258,6 @@ static void *ip_detect_thread(void *arg)
 	}
 
 	return NULL;
-}
-
-/* ---- Update check ---- */
-
-static volatile bool g_update_required = false;
-static char g_remote_version[64] = "";
-
-struct update_mem_buf {
-	char *data;
-	size_t size;
-};
-
-static size_t update_write_cb(void *contents, size_t size, size_t nmemb,
-			      void *userp)
-{
-	size_t total = size * nmemb;
-	struct update_mem_buf *buf = (struct update_mem_buf *)userp;
-	char *tmp = realloc(buf->data, buf->size + total + 1);
-	if (!tmp) return 0;
-	buf->data = tmp;
-	memcpy(buf->data + buf->size, contents, total);
-	buf->size += total;
-	buf->data[buf->size] = '\0';
-	return total;
-}
-
-static int compare_versions(const char *a, const char *b)
-{
-	int a1 = 0, a2 = 0, a3 = 0, b1 = 0, b2 = 0, b3 = 0;
-	sscanf(a, "%d.%d.%d", &a1, &a2, &a3);
-	sscanf(b, "%d.%d.%d", &b1, &b2, &b3);
-	if (a1 != b1) return a1 - b1;
-	if (a2 != b2) return a2 - b2;
-	return a3 - b3;
-}
-
-struct update_ctx {
-	char version[64];
-};
-
-#include "help-dialog.hpp"
-#include "stats-dialog.hpp"
-
-static int curl_debug_cb(CURL *handle, curl_infotype type, char *data,
-			 size_t size, void *userptr)
-{
-	(void)handle;
-	(void)userptr;
-
-	const char *prefix;
-	switch (type) {
-	case CURLINFO_TEXT:
-		prefix = "* ";
-		break;
-	case CURLINFO_SSL_DATA_IN:
-	case CURLINFO_SSL_DATA_OUT:
-		return 0;
-	case CURLINFO_HEADER_IN:
-		prefix = "< ";
-		break;
-	case CURLINFO_HEADER_OUT:
-		prefix = "> ";
-		break;
-	case CURLINFO_DATA_IN:
-	case CURLINFO_DATA_OUT:
-		return 0;
-	default:
-		return 0;
-	}
-
-	char buf[1024];
-	size_t len = size < sizeof(buf) - 1 ? size : sizeof(buf) - 1;
-	memcpy(buf, data, len);
-	while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r'))
-		len--;
-	buf[len] = '\0';
-
-	blog(LOG_INFO, "[%s] curl: %s%s", PLUGIN_NAME, prefix, buf);
-	return 0;
-}
-
-static bool check_update_blocking(void)
-{
-	char url[256];
-	snprintf(url, sizeof(url), "%s%s%s",
-		 obf_https_prefix(), obf_stools_host(),
-		 obf_api_version_path());
-
-	char ua[128];
-	snprintf(ua, sizeof(ua), "%s%s", obf_ua_prefix(), PLUGIN_VERSION);
-
-	CURL *curl = curl_easy_init();
-	if (!curl) return false;
-
-	struct update_mem_buf buf = {NULL, 0};
-	char errbuf[CURL_ERROR_SIZE] = "";
-
-	curl_easy_setopt(curl, CURLOPT_URL, url);
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, update_write_cb);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
-	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
-	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
-	curl_easy_setopt(curl, CURLOPT_USERAGENT, ua);
-	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-#ifdef _WIN32
-	curl_easy_setopt(curl, CURLOPT_SSLVERSION,
-			 CURL_SSLVERSION_TLSv1_2 | CURL_SSLVERSION_MAX_TLSv1_2);
-	curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NO_REVOKE);
-	curl_easy_setopt(curl, CURLOPT_HTTP_VERSION,
-			 (long)CURL_HTTP_VERSION_1_1);
-	curl_easy_setopt(curl, CURLOPT_SSL_ENABLE_ALPN, 0L);
-	curl_easy_setopt(curl, CURLOPT_IPRESOLVE, (long)CURL_IPRESOLVE_V4);
-#endif
-	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-	curl_easy_setopt(curl, CURLOPT_DEBUGFUNCTION, curl_debug_cb);
-	curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
-
-	CURLcode res = curl_easy_perform(curl);
-	long http_code = 0;
-	curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-	curl_easy_cleanup(curl);
-
-	if (res != CURLE_OK) {
-		blog(LOG_WARNING, "[%s] Update check failed: %s (%s)",
-		     PLUGIN_NAME, curl_easy_strerror(res),
-		     errbuf[0] ? errbuf : "no details");
-	}
-
-	if (res != CURLE_OK || http_code != 200 || !buf.data) {
-		free(buf.data);
-		return false;
-	}
-
-	const char *vkey = strstr(buf.data, "\"version\"");
-	if (!vkey) { free(buf.data); return false; }
-	const char *vstart = strchr(vkey + 9, '"');
-	if (!vstart) { free(buf.data); return false; }
-	vstart++;
-	const char *vend = strchr(vstart, '"');
-	if (!vend || vend - vstart > 60) { free(buf.data); return false; }
-
-	size_t vlen = (size_t)(vend - vstart);
-	memcpy(g_remote_version, vstart, vlen);
-	g_remote_version[vlen] = '\0';
-	free(buf.data);
-
-	return compare_versions(g_remote_version, PLUGIN_VERSION) > 0;
-}
-
-static void task_show_forced_update(void *param)
-{
-	struct update_ctx *ctx = param;
-	forced_update_show(ctx->version, obs_get_locale());
-	free(ctx);
 }
 
 /* ---- Tools menu ---- */
@@ -436,19 +283,11 @@ bool obs_module_load(void)
 
 	curl_version_info_data *vi = curl_version_info(CURLVERSION_NOW);
 	if (vi) {
-		blog(LOG_INFO,
+		dbg_log(LOG_INFO,
 		     "[%s] curl %s, SSL: %s, features: 0x%x",
 		     PLUGIN_NAME, vi->version,
 		     vi->ssl_version ? vi->ssl_version : "none",
 		     (unsigned)vi->features);
-	}
-
-	if (check_update_blocking()) {
-		g_update_required = true;
-		blog(LOG_WARNING,
-		     "[%s] Update required (v%s available), plugin disabled",
-		     PLUGIN_NAME, g_remote_version);
-		return true;
 	}
 
 	obs_register_source(&irl_source_info);
@@ -457,28 +296,17 @@ bool obs_module_load(void)
 	if (pthread_create(&g_ip_thread, NULL, ip_detect_thread, NULL) != 0)
 		g_ip_thread_active = false;
 
-	blog(LOG_INFO, "[%s] Plugin loaded (v%s)", PLUGIN_NAME, PLUGIN_VERSION);
+	dbg_log(LOG_INFO, "[%s] Plugin loaded (v%s)", PLUGIN_NAME, PLUGIN_VERSION);
 	return true;
 }
 
 void obs_module_post_load(void)
 {
-	if (g_update_required) {
-		struct update_ctx *ctx = malloc(sizeof(*ctx));
-		if (ctx) {
-			snprintf(ctx->version, sizeof(ctx->version), "%s",
-				 g_remote_version);
-			obs_queue_task(OBS_TASK_UI, task_show_forced_update,
-				       ctx, false);
-		}
-		return;
-	}
-
 	obs_frontend_add_tools_menu_item(tr_tools_menu_help(),
 					 tools_menu_cb, NULL);
 	obs_frontend_add_tools_menu_item(tr_tools_menu_stats(),
 					 tools_stats_cb, NULL);
-	blog(LOG_DEBUG, "[%s] Tools menu registered", PLUGIN_NAME);
+	dbg_log(LOG_DEBUG, "[%s] Tools menu registered", PLUGIN_NAME);
 }
 
 void obs_module_unload(void)
@@ -489,5 +317,5 @@ void obs_module_unload(void)
 	}
 
 	curl_global_cleanup();
-	blog(LOG_INFO, "[%s] Plugin unloaded", PLUGIN_NAME);
+	dbg_log(LOG_INFO, "[%s] Plugin unloaded", PLUGIN_NAME);
 }

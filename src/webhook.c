@@ -1,5 +1,6 @@
 #include "webhook.h"
 #include <obs-module.h>
+#include "debug-log.h"
 #include <util/threading.h>
 #include <util/platform.h>
 #include <string.h>
@@ -58,7 +59,7 @@ static int webhook_curl_debug_cb(CURL *handle, curl_infotype type, char *data,
 		len--;
 	buf[len] = '\0';
 
-	blog(LOG_INFO, "[Easy IRL Stream] curl: %s%s", prefix, buf);
+	dbg_log(LOG_INFO, "[Easy IRL Stream] curl: %s%s", prefix, buf);
 	return 0;
 }
 
@@ -66,7 +67,7 @@ static void webhook_do_send(const char *url, const char *json_body)
 {
 	CURL *curl = curl_easy_init();
 	if (!curl) {
-		blog(LOG_WARNING, "[%s] Webhook: curl_easy_init failed",
+		dbg_log(LOG_WARNING, "[%s] Webhook: curl_easy_init failed",
 		     "Easy IRL Stream");
 		return;
 	}
@@ -100,13 +101,13 @@ static void webhook_do_send(const char *url, const char *json_body)
 
 	CURLcode res = curl_easy_perform(curl);
 	if (res != CURLE_OK) {
-		blog(LOG_WARNING, "[%s] Webhook failed (%s): %s (%s)",
+		dbg_log(LOG_WARNING, "[%s] Webhook failed (%s): %s (%s)",
 		     "Easy IRL Stream", url, curl_easy_strerror(res),
 		     errbuf[0] ? errbuf : "no details");
 	} else {
 		long http_code = 0;
 		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-		blog(LOG_DEBUG, "[%s] Webhook sent: %s (HTTP %ld)",
+		dbg_log(LOG_DEBUG, "[%s] Webhook sent: %s (HTTP %ld)",
 		     "Easy IRL Stream", url, http_code);
 	}
 
@@ -177,7 +178,7 @@ void webhook_send_async(const char *url, const char *event_name,
 static void *cmd_thread_func(void *arg)
 {
 	struct cmd_args *ca = arg;
-	blog(LOG_DEBUG, "[%s] Executing command: %s", "Easy IRL Stream",
+	dbg_log(LOG_DEBUG, "[%s] Executing command: %s", "Easy IRL Stream",
 	     ca->command);
 	(void)system(ca->command);
 	bfree(ca->command);

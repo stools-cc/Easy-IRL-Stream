@@ -160,8 +160,11 @@ else()
     set(_PLUGIN_VER "${PROJECT_VERSION}")
 endif()
 
+option(DEBUG_BUILD "Debug build: show update dialog but don't stop server" OFF)
+
 target_compile_definitions(easy-irl-stream PRIVATE
     PLUGIN_VERSION="${_PLUGIN_VER}"
+    $<$<BOOL:${DEBUG_BUILD}>:DEBUG_BUILD>
 )
 
 set_target_properties(easy-irl-stream PROPERTIES PREFIX "")
